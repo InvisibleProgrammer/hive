@@ -29,7 +29,12 @@
     <htmlunit.version>2.45.0</htmlunit.version>
   </properties>
   <dependencies>
-    <!-- intra-project -->
+    <dependency>
+        <groupId>org.apache.hive</groupId>
+        <artifactId>hive-iceberg-handler</artifactId>
+        <version>${project.version}</version>
+    </dependency>
+  <!-- intra-project -->
     <dependency>
       <groupId>org.apache.hive</groupId>
       <artifactId>hive-common</artifactId>
