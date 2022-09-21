@@ -73,7 +73,6 @@ import org.apache.hadoop.hive.metastore.txn.AcidOpenTxnsCounterService;
 import org.apache.hadoop.hive.ql.scheduled.ScheduledQueryExecutionContext;
 import org.apache.hadoop.hive.ql.scheduled.ScheduledQueryExecutionService;
 import org.apache.hadoop.hive.ql.schq.MockScheduledQueryService;
-import org.apache.hadoop.hive.ql.schq.TestScheduledQueryService;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.ql.txn.compactor.CompactorMR;
 import org.apache.hadoop.hive.ql.txn.compactor.Worker;
@@ -150,6 +149,7 @@ public class TestTxnCommands2 extends TxnCommandsBaseForTests {
     //of these tests.
     HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_VECTORIZATION_ENABLED, false);
     HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVEOPTIMIZEMETADATAQUERIES, false);
+    HiveConf.setBoolVar(hiveConf, HiveConf.ConfVars.HIVE_ACID_TRUNCATE_USE_BASE, false);
   }
   
   @Override
@@ -3192,6 +3192,33 @@ public class TestTxnCommands2 extends TxnCommandsBaseForTests {
   }
 
   @Test
+  public void testNoDeltaAfterDeleteAndMinorCompaction() throws Exception {
+    String tableName = "test_major_delete_minor";
+
+    runStatementOnDriver("drop table if exists " + tableName);
+    runStatementOnDriver("create table " + tableName + " (name VARCHAR(50), age TINYINT, num_clicks BIGINT) stored as orc" +
+            " tblproperties ('transactional'='true')");
+    runStatementOnDriver("insert into " + tableName + " values ('amy', 35, 12341234)");
+    runStatementOnDriver("insert into " + tableName + " values ('bob', 66, 1234712348712)");
+    runStatementOnDriver("insert into " + tableName + " values ('cal', 21, 431)");
+    runStatementOnDriver("insert into " + tableName + " values ('fse', 28, 8456)");
+    runStatementOnDriver("alter table " + tableName + " compact 'major'");
+    runWorker(hiveConf);
+    runCleaner(hiveConf);
+    runStatementOnDriver("delete from " + tableName + " where name='bob'");
+    runStatementOnDriver("delete from " + tableName + " WHERE name='fse'");
+    runStatementOnDriver("alter table " + tableName + " compact 'minor'");
+    runWorker(hiveConf);
+    runCleaner(hiveConf);
+
+    FileSystem fs = FileSystem.get(hiveConf);
+    FileStatus[] fileStatuses = fs.globStatus(new Path(getWarehouseDir() + "/" + tableName + "/*"));
+    for(FileStatus fileStatus : fileStatuses) {
+      Assert.assertFalse(fileStatus.getPath().getName().startsWith(AcidUtils.DELTA_PREFIX));
+    }
+  }
+
+  @Test
   public void testNoTxnComponentsForScheduledQueries() throws Exception {
     String tableName = "scheduledquerytable";
     int[][] tableData = {{1, 2},{3, 4}};
@@ -3262,6 +3289,47 @@ public class TestTxnCommands2 extends TxnCommandsBaseForTests {
     int[][] actualData = {{1,2}, {1,2}, {1,2}, {1,2}, {3,4}, {3,4}, {3,4}, {3,4}};
     List<String> resData = runStatementOnDriver("select a,b from " + tableName + " order by a");
     Assert.assertEquals(resData, stringifyValues(actualData));
+  }
+
+  @Test
+  public void testCompactionOutputDirectoryNamesOnPartitionsAndOldDeltasDeleted() throws Exception {
+    String p1 = "p=p1";
+    String p2 = "p=p2";
+    String oldDelta1 = "delta_0000001_0000001_0000";
+    String oldDelta2 = "delta_0000002_0000002_0000";
+    String oldDelta3 = "delta_0000003_0000003_0000";
+    String oldDelta4 = "delta_0000004_0000004_0000";
+
+    String expectedDelta1 = p1 + "/delta_0000001_0000002_v0000021";
+    String expectedDelta2 = p2 + "/delta_0000003_0000004_v0000022";
+
+    runStatementOnDriver("insert into " + Table.ACIDTBLPART + " partition(p='p1') (a,b) values(1,2)");
+    runStatementOnDriver("insert into " + Table.ACIDTBLPART + " partition(p='p1') (a,b) values(3,4)");
+    runStatementOnDriver("insert into " + Table.ACIDTBLPART + " partition(p='p2') (a,b) values(1,2)");
+    runStatementOnDriver("insert into " + Table.ACIDTBLPART + " partition(p='p2') (a,b) values(3,4)");
+
+    compactPartition(Table.ACIDTBLPART.name().toLowerCase(), CompactionType.MINOR, p1);
+    compactPartition(Table.ACIDTBLPART.name().toLowerCase(), CompactionType.MINOR, p2);
+
+    FileSystem fs = FileSystem.get(hiveConf);
+    String tablePath = getWarehouseDir() + "/" + Table.ACIDTBLPART.name().toLowerCase() + "/";
+
+    Assert.assertTrue(fs.exists(new Path(tablePath + expectedDelta1)));
+    Assert.assertTrue(fs.exists(new Path(tablePath + expectedDelta2)));
+
+    Assert.assertFalse(fs.exists(new Path(tablePath + oldDelta1)));
+    Assert.assertFalse(fs.exists(new Path(tablePath + oldDelta2)));
+    Assert.assertFalse(fs.exists(new Path(tablePath + oldDelta3)));
+    Assert.assertFalse(fs.exists(new Path(tablePath + oldDelta4)));
+  }
+
+  private void compactPartition(String table, CompactionType type, String partition)
+      throws Exception {
+    CompactionRequest compactionRequest = new CompactionRequest("default", table, type);
+    compactionRequest.setPartitionname(partition);
+    txnHandler.compact(compactionRequest);
+    runWorker(hiveConf);
+    runCleaner(hiveConf);
   }
 
   /**
