@@ -6,7 +6,9 @@
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
- * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -14,25 +16,22 @@
  * limitations under the License.
  */
 
-package org.apache.hive.jdbc;
+package org.apache.hadoop.hive.ql.ddl.table.branch.create;
 
-import org.junit.Ignore;
-import org.junit.Test;
+import org.apache.hadoop.hive.ql.ddl.DDLOperation;
+import org.apache.hadoop.hive.ql.ddl.DDLOperationContext;
+import org.apache.hadoop.hive.ql.metadata.Table;
 
-/**
- * TestJdbcGenericUDTFGetSplits2.
- */
-public class TestJdbcGenericUDTFGetSplits2 extends AbstractTestJdbcGenericUDTFGetSplits {
+public class AlterTableCreateBranchOperation extends DDLOperation<AlterTableCreateBranchDesc> {
 
-  @Test(timeout = 200000)
-  @Ignore("HIVE-23394")
-  public void testGenericUDTFOrderBySplitCount1() throws Exception {
-    super.testGenericUDTFOrderBySplitCount1("get_llap_splits", new int[]{12, 3, 1, 4, 4, 4, 3, 12});
+  public AlterTableCreateBranchOperation(DDLOperationContext context, AlterTableCreateBranchDesc desc) {
+    super(context, desc);
   }
 
-  @Test(timeout = 200000)
-  public void testGenericUDTFOrderBySplitCount1OnPartitionedTable() throws Exception {
-    super.testGenericUDTFOrderBySplitCount1OnPartitionedTable("get_llap_splits", new int[]{7, 7, 3, 3, 3});
+  @Override
+  public int execute() throws Exception {
+    Table table = context.getDb().getTable(desc.getFullTableName());
+    context.getDb().alterTableBranchOperation(table, desc.getAlterTableBranchSpec());
+    return 0;
   }
-
 }

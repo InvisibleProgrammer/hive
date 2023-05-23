@@ -251,7 +251,12 @@ final class HMSClient implements AutoCloseable {
   }
 
   boolean dropTable(@NotNull String dbName, @NotNull String tableName) throws TException {
-    client.drop_table(dbName, tableName, true);
+    return dropTable(dbName, tableName, true);
+  }
+
+  boolean dropTable(@NotNull String dbName, @NotNull String tableName, boolean deleteData)
+    throws TException {
+    client.drop_table(dbName, tableName, deleteData);
     return true;
   }
 
@@ -407,6 +412,8 @@ final class HMSClient implements AutoCloseable {
     boolean useCompactProtocol = MetastoreConf.getBoolVar(conf, MetastoreConf.ConfVars.USE_THRIFT_COMPACT_PROTOCOL);
     int clientSocketTimeout = (int) MetastoreConf.getTimeVar(conf,
         MetastoreConf.ConfVars.CLIENT_SOCKET_TIMEOUT, TimeUnit.MILLISECONDS);
+    int connectionTimeout = (int) MetastoreConf.getTimeVar(conf,
+        MetastoreConf.ConfVars.CLIENT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS);
 
     LOG.debug("Connecting to {}, framedTransport = {}", uri, useFramedTransport);
 
@@ -415,7 +422,7 @@ final class HMSClient implements AutoCloseable {
 
     // Sasl/SSL code is copied from HiveMetastoreCLient
     if (!useSSL) {
-      transport = new TSocket(new TConfiguration(),host, port, clientSocketTimeout);
+      transport = new TSocket(new TConfiguration(),host, port, clientSocketTimeout, connectionTimeout);
     } else {
       String trustStorePath = MetastoreConf.getVar(conf, MetastoreConf.ConfVars.SSL_TRUSTSTORE_PATH).trim();
       if (trustStorePath.isEmpty()) {
@@ -430,7 +437,7 @@ final class HMSClient implements AutoCloseable {
               MetastoreConf.getVar(conf, MetastoreConf.ConfVars.SSL_TRUSTMANAGERFACTORY_ALGORITHM).trim();
 
       // Create an SSL socket and connect
-      transport = SecurityUtils.getSSLSocket(host, port, clientSocketTimeout,
+      transport = SecurityUtils.getSSLSocket(host, port, clientSocketTimeout, connectionTimeout,
           trustStorePath, trustStorePassword, trustStoreType, trustStoreAlgorithm);
       LOG.info("Opened an SSL connection to metastore, current connections");
     }
