@@ -1100,7 +1100,7 @@ public class TestCompactionTxnHandler {
     assertNotNull(ci);
 
     ci.highestWriteId = 41;
-    txnHandler.updateCompactorState(ci, 0);
+    txnHandler.updateCompactorState(ci, openTxn());
     txnHandler.markCompacted(ci);
   }
 
