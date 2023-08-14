@@ -29,12 +29,17 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.common.StatsSetupConst;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.metastore.IMetaStoreClient;
 import org.apache.hadoop.hive.metastore.api.EnvironmentContext;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.StorageDescriptor;
@@ -43,7 +48,6 @@ import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HiveAuthorizer;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HivePrivilegeObject;
 import org.apache.hadoop.hive.serde.serdeConstants;
-import org.apache.iceberg.AssertHelpers;
 import org.apache.iceberg.BaseMetastoreTableOperations;
 import org.apache.iceberg.BaseTable;
 import org.apache.iceberg.FileFormat;
@@ -62,18 +66,21 @@ import org.apache.iceberg.exceptions.CommitFailedException;
 import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.hadoop.Util;
 import org.apache.iceberg.hive.HiveSchemaUtil;
-import org.apache.iceberg.hive.MetastoreUtil;
+import org.apache.iceberg.hive.HiveVersion;
 import org.apache.iceberg.mr.Catalogs;
 import org.apache.iceberg.mr.InputFormatConfig;
+import org.apache.iceberg.mr.TestHelper;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableList;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableSet;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
+import org.apache.iceberg.relocated.com.google.common.util.concurrent.MoreExecutors;
 import org.apache.iceberg.types.Type;
 import org.apache.iceberg.types.Types;
 import org.apache.parquet.hadoop.ParquetOutputFormat;
 import org.apache.thrift.TException;
+import org.assertj.core.api.Assertions;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Assert;
@@ -92,6 +99,10 @@ import static org.apache.iceberg.TableProperties.GC_ENABLED;
 import static org.apache.iceberg.types.Types.NestedField.optional;
 import static org.junit.runners.Parameterized.Parameter;
 import static org.junit.runners.Parameterized.Parameters;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.spy;
 
 @RunWith(Parameterized.class)
 public class TestHiveIcebergStorageHandlerNoScan {
@@ -237,6 +248,7 @@ public class TestHiveIcebergStorageHandlerNoScan {
         .build();
 
     Table table = testTables.loadTable(identifier);
+    Assert.assertEquals(spec.specId(), table.spec().specId());
     Assert.assertEquals(spec, table.spec());
 
     shell.executeStatement("ALTER TABLE default.part_test SET PARTITION SPEC(year(year_field), month(month_field), " +
@@ -254,7 +266,13 @@ public class TestHiveIcebergStorageHandlerNoScan {
         .build();
 
     table.refresh();
-    Assert.assertEquals(spec, table.spec());
+    Assert.assertEquals(spec.specId(), table.spec().specId());
+
+    for (PartitionField field :
+            spec.fields()) {
+      Assert.assertTrue(field.name(), table.spec().fields().stream().anyMatch(
+          tableField -> tableField.name().equals(field.name())));
+    }
   }
 
   @Test
@@ -433,11 +451,9 @@ public class TestHiveIcebergStorageHandlerNoScan {
       shell.executeStatement("DROP TABLE customers");
 
       // Check if the table was really dropped even from the Catalog
-      AssertHelpers.assertThrows("should throw exception", NoSuchTableException.class,
-          "Table does not exist", () -> {
-            testTables.loadTable(identifier);
-          }
-      );
+      Assertions.assertThatThrownBy(() -> testTables.loadTable(identifier))
+              .isInstanceOf(NoSuchTableException.class)
+              .hasMessageStartingWith("Table does not exist");
     } else {
       Path hmsTableLocation = new Path(hmsTable.getSd().getLocation());
 
@@ -445,11 +461,9 @@ public class TestHiveIcebergStorageHandlerNoScan {
       shell.executeStatement("DROP TABLE customers");
 
       // Check if we drop an exception when trying to load the table
-      AssertHelpers.assertThrows("should throw exception", NoSuchTableException.class,
-          "Table does not exist", () -> {
-            testTables.loadTable(identifier);
-          }
-      );
+      Assertions.assertThatThrownBy(() -> testTables.loadTable(identifier))
+              .isInstanceOf(NoSuchTableException.class)
+              .hasMessage("Table does not exist: default.customers");
 
       // Check if the files are removed
       FileSystem fs = Util.getFs(hmsTableLocation, shell.getHiveConf());
@@ -482,11 +496,9 @@ public class TestHiveIcebergStorageHandlerNoScan {
 
     shell.executeStatement("DROP TABLE default.customers");
     // Check if the table was really dropped even from the Catalog
-    AssertHelpers.assertThrows("should throw exception", NoSuchTableException.class,
-        "Table does not exist", () -> {
-          testTables.loadTable(identifier);
-        }
-    );
+    Assertions.assertThatThrownBy(() -> testTables.loadTable(identifier))
+            .isInstanceOf(NoSuchTableException.class)
+            .hasMessageStartingWith("Table does not exist");
   }
 
   @Test
@@ -581,11 +593,9 @@ public class TestHiveIcebergStorageHandlerNoScan {
       shell.executeStatement("DROP TABLE customers");
 
       // Check if we drop an exception when trying to drop the table
-      AssertHelpers.assertThrows("should throw exception", NoSuchTableException.class,
-          "Table does not exist", () -> {
-            testTables.loadTable(identifier);
-          }
-      );
+      Assertions.assertThatThrownBy(() -> testTables.loadTable(identifier))
+              .isInstanceOf(NoSuchTableException.class)
+              .hasMessage("Table does not exist: default.customers");
 
       // Check if the files are kept
       FileSystem fs = Util.getFs(hmsTableLocation, shell.getHiveConf());
@@ -615,11 +625,9 @@ public class TestHiveIcebergStorageHandlerNoScan {
 
     // check if HMS table is nonetheless still droppable
     shell.executeStatement(String.format("DROP TABLE %s", identifier));
-    AssertHelpers.assertThrows("should throw exception", NoSuchTableException.class,
-        "Table does not exist", () -> {
-          testTables.loadTable(identifier);
-        }
-    );
+    Assertions.assertThatThrownBy(() -> testTables.loadTable(identifier))
+            .isInstanceOf(NoSuchTableException.class)
+            .hasMessage("Table does not exist: default.customers");
   }
 
   @Test
@@ -627,37 +635,55 @@ public class TestHiveIcebergStorageHandlerNoScan {
     TableIdentifier identifier = TableIdentifier.of("default", "withShell2");
 
     // Wrong schema
-    AssertHelpers.assertThrows("should throw exception", IllegalArgumentException.class,
-        "Unrecognized token 'WrongSchema'", () -> {
-          shell.executeStatement("CREATE EXTERNAL TABLE withShell2 " +
-              "STORED BY ICEBERG " +
-              testTables.locationForCreateTableSQL(identifier) +
-              "TBLPROPERTIES ('" + InputFormatConfig.TABLE_SCHEMA + "'='WrongSchema'" +
-              ",'" + InputFormatConfig.CATALOG_NAME + "'='" + testTables.catalogName() + "')");
-        }
-    );
+    Assertions.assertThatThrownBy(
+        () ->
+                shell.executeStatement(
+                        "CREATE EXTERNAL TABLE withShell2 " +
+                                "STORED BY 'org.apache.iceberg.mr.hive.HiveIcebergStorageHandler' " +
+                                testTables.locationForCreateTableSQL(identifier) +
+                                "TBLPROPERTIES ('" +
+                                InputFormatConfig.TABLE_SCHEMA +
+                                "'='WrongSchema'" +
+                                ",'" +
+                                InputFormatConfig.CATALOG_NAME +
+                                "'='" +
+                                testTables.catalogName() +
+                                "')"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageStartingWith("Failed to execute Hive query")
+        .hasMessageContaining("Unrecognized token 'WrongSchema'");
 
     // Missing schema, we try to get the schema from the table and fail
-    AssertHelpers.assertThrows("should throw exception", IllegalArgumentException.class,
-        "Please provide ", () -> {
-          shell.executeStatement("CREATE EXTERNAL TABLE withShell2 " +
-              "STORED BY ICEBERG " +
-              testTables.locationForCreateTableSQL(identifier) +
-              testTables.propertiesForCreateTableSQL(ImmutableMap.of()));
-        }
-    );
+    Assertions.assertThatThrownBy(
+        () ->
+                shell.executeStatement(
+                        "CREATE EXTERNAL TABLE withShell2 " +
+                                "STORED BY 'org.apache.iceberg.mr.hive.HiveIcebergStorageHandler' " +
+                                testTables.locationForCreateTableSQL(identifier) +
+                                testTables.propertiesForCreateTableSQL(ImmutableMap.of())))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageStartingWith("Failed to execute Hive query")
+        .hasMessageContaining("Please provide an existing table or a valid schema");
 
     if (!testTables.locationForCreateTableSQL(identifier).isEmpty()) {
       // Only test this if the location is required
-      AssertHelpers.assertThrows("should throw exception", IllegalArgumentException.class,
-          "Table location not set", () -> {
-            shell.executeStatement("CREATE EXTERNAL TABLE withShell2 " +
-                "STORED BY ICEBERG " +
-                "TBLPROPERTIES ('" + InputFormatConfig.TABLE_SCHEMA + "'='" +
-                SchemaParser.toJson(HiveIcebergStorageHandlerTestUtils.CUSTOMER_SCHEMA) + "','" +
-                InputFormatConfig.CATALOG_NAME + "'='" + testTables.catalogName() + "')");
-          }
-      );
+      Assertions.assertThatThrownBy(
+          () ->
+                  shell.executeStatement(
+                          "CREATE EXTERNAL TABLE withShell2 " +
+                                  "STORED BY 'org.apache.iceberg.mr.hive.HiveIcebergStorageHandler' " +
+                                  "TBLPROPERTIES ('" +
+                                  InputFormatConfig.TABLE_SCHEMA +
+                                  "'='" +
+                                  SchemaParser.toJson(HiveIcebergStorageHandlerTestUtils.CUSTOMER_SCHEMA) +
+                                  "','" +
+                                  InputFormatConfig.CATALOG_NAME +
+                                  "'='" +
+                                  testTables.catalogName() +
+                                  "')"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageStartingWith("Failed to execute Hive query")
+          .hasMessageEndingWith("Table location not set");
     }
   }
 
@@ -669,15 +695,23 @@ public class TestHiveIcebergStorageHandlerNoScan {
 
     if (testTableType == TestTables.TestTableType.HIVE_CATALOG) {
       // In HiveCatalog we just expect an exception since the table is already exists
-      AssertHelpers.assertThrows("should throw exception", IllegalArgumentException.class,
-          "customers already exists", () -> {
-            shell.executeStatement("CREATE EXTERNAL TABLE customers " +
-                "STORED BY ICEBERG " +
-                "TBLPROPERTIES ('" + InputFormatConfig.TABLE_SCHEMA + "'='" +
-                SchemaParser.toJson(HiveIcebergStorageHandlerTestUtils.CUSTOMER_SCHEMA) + "',' " +
-                InputFormatConfig.CATALOG_NAME + "'='" + testTables.catalogName() + "')");
-          }
-      );
+      Assertions.assertThatThrownBy(
+        () ->
+                shell.executeStatement(
+                        "CREATE EXTERNAL TABLE customers " +
+                                "STORED BY 'org.apache.iceberg.mr.hive.HiveIcebergStorageHandler' " +
+                                "TBLPROPERTIES ('" +
+                                InputFormatConfig.TABLE_SCHEMA +
+                                "'='" +
+                                SchemaParser.toJson(HiveIcebergStorageHandlerTestUtils.CUSTOMER_SCHEMA) +
+                                "',' " +
+                                InputFormatConfig.CATALOG_NAME +
+                                "'='" +
+                                testTables.catalogName() +
+                                "')"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageStartingWith("Failed to execute Hive query")
+          .hasMessageContaining("customers already exists");
     } else {
       // With other catalogs, table creation should succeed
       shell.executeStatement("CREATE EXTERNAL TABLE customers " +
@@ -688,20 +722,45 @@ public class TestHiveIcebergStorageHandlerNoScan {
   }
 
   @Test
+  public void testFormatVersion() throws IOException {
+    Assume.assumeTrue(testTableType != TestTables.TestTableType.HIVE_CATALOG);
+    TableIdentifier tbl = TableIdentifier.of("default", "customers");
+    // Create the Iceberg table
+    testTables.createIcebergTable(shell.getHiveConf(), "customers", COMPLEX_SCHEMA, FileFormat.PARQUET,
+        Collections.singletonMap("format-version", "2"), Collections.emptyList());
+
+    shell.executeStatement("CREATE EXTERNAL TABLE customers " + "STORED BY ICEBERG " +
+        testTables.locationForCreateTableSQL(TableIdentifier.of("default", "customers")) +
+        testTables.propertiesForCreateTableSQL(ImmutableMap.of()));
+
+    String fmt = shell.executeAndStringify("show create table " + tbl);
+
+    Assert.assertTrue(fmt, fmt.contains("'format-version'='2'"));
+  }
+
+  @Test
   public void testCreatePartitionedTableWithPropertiesAndWithColumnSpecification() {
     PartitionSpec spec =
         PartitionSpec.builderFor(HiveIcebergStorageHandlerTestUtils.CUSTOMER_SCHEMA).identity("last_name").build();
 
-    AssertHelpers.assertThrows("should throw exception", IllegalArgumentException.class,
-        "Provide only one of the following", () -> {
-          shell.executeStatement("CREATE EXTERNAL TABLE customers (customer_id BIGINT) " +
-              "PARTITIONED BY (first_name STRING) " +
-              "STORED BY ICEBERG " +
-              testTables.locationForCreateTableSQL(TableIdentifier.of("default", "customers")) +
-              testTables.propertiesForCreateTableSQL(
-                      ImmutableMap.of(InputFormatConfig.PARTITION_SPEC, PartitionSpecParser.toJson(spec))));
-        }
-    );
+    Assertions.assertThatThrownBy(
+        () ->
+              shell.executeStatement(
+                      "CREATE EXTERNAL TABLE customers (customer_id BIGINT) " +
+                              "PARTITIONED BY (first_name STRING) " +
+                              "STORED BY 'org.apache.iceberg.mr.hive.HiveIcebergStorageHandler' " +
+                              testTables.locationForCreateTableSQL(
+                              TableIdentifier.of("default", "customers")) +
+                              " TBLPROPERTIES ('" +
+                              InputFormatConfig.PARTITION_SPEC +
+                              "'='" +
+                              PartitionSpecParser.toJson(spec) +
+                              "')"))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageStartingWith("Failed to execute Hive query")
+          .hasMessageEndingWith(
+          "Provide only one of the following: Hive partition transform specification, " +
+                    "or the iceberg.mr.table.partition.spec property");
   }
 
   @Test
@@ -764,15 +823,19 @@ public class TestHiveIcebergStorageHandlerNoScan {
         "CHAR(1)", Types.StringType.get());
 
     for (String notSupportedType : notSupportedTypes.keySet()) {
-      AssertHelpers.assertThrows("should throw exception", IllegalArgumentException.class,
-          "Unsupported Hive type", () -> {
-            shell.executeStatement("CREATE EXTERNAL TABLE not_supported_types " +
-                "(not_supported " + notSupportedType + ") " +
-                "STORED BY ICEBERG " +
-                testTables.locationForCreateTableSQL(identifier) +
-                testTables.propertiesForCreateTableSQL(ImmutableMap.of()));
-          }
-      );
+      Assertions.assertThatThrownBy(
+        () ->
+                shell.executeStatement(
+                        "CREATE EXTERNAL TABLE not_supported_types " +
+                                "(not_supported " +
+                                notSupportedType +
+                                ") " +
+                                "STORED BY 'org.apache.iceberg.mr.hive.HiveIcebergStorageHandler' " +
+                                testTables.locationForCreateTableSQL(identifier) +
+                                testTables.propertiesForCreateTableSQL(ImmutableMap.of())))
+          .isInstanceOf(IllegalArgumentException.class)
+          .hasMessageStartingWith("Failed to execute Hive query")
+          .hasMessageContaining("Unsupported Hive type");
     }
   }
 
@@ -939,13 +1002,13 @@ public class TestHiveIcebergStorageHandlerNoScan {
     if (Catalogs.hiveCatalog(shell.getHiveConf(), tableProperties)) {
       expectedIcebergProperties.put(TableProperties.ENGINE_HIVE_ENABLED, "true");
     }
-    if (MetastoreUtil.hive3PresentOnClasspath()) {
+    if (HiveVersion.min(HiveVersion.HIVE_3)) {
       expectedIcebergProperties.put("bucketing_version", "2");
     }
     Assert.assertEquals(expectedIcebergProperties, icebergTable.properties());
 
     if (Catalogs.hiveCatalog(shell.getHiveConf(), tableProperties)) {
-      Assert.assertEquals(10, hmsParams.size());
+      Assert.assertEquals(13, hmsParams.size());
       Assert.assertEquals("initial_val", hmsParams.get("custom_property"));
       Assert.assertEquals("TRUE", hmsParams.get("EXTERNAL"));
       Assert.assertEquals("true", hmsParams.get(TableProperties.ENGINE_HIVE_ENABLED));
@@ -959,7 +1022,7 @@ public class TestHiveIcebergStorageHandlerNoScan {
       Assert.assertNotNull(hmsParams.get(hive_metastoreConstants.DDL_TIME));
       Assert.assertNotNull(hmsParams.get(serdeConstants.SERIALIZATION_FORMAT));
     } else {
-      Assert.assertEquals(6, hmsParams.size());
+      Assert.assertEquals(7, hmsParams.size());
       Assert.assertNull(hmsParams.get(TableProperties.ENGINE_HIVE_ENABLED));
     }
 
@@ -982,7 +1045,7 @@ public class TestHiveIcebergStorageHandlerNoScan {
         .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
 
     if (Catalogs.hiveCatalog(shell.getHiveConf(), tableProperties)) {
-      Assert.assertEquals(13, hmsParams.size()); // 2 newly-added properties + previous_metadata_location prop
+      Assert.assertEquals(16, hmsParams.size()); // 2 newly-added properties + previous_metadata_location prop
       Assert.assertEquals("true", hmsParams.get("new_prop_1"));
       Assert.assertEquals("false", hmsParams.get("new_prop_2"));
       Assert.assertEquals("new_val", hmsParams.get("custom_property"));
@@ -992,7 +1055,7 @@ public class TestHiveIcebergStorageHandlerNoScan {
       Assert.assertEquals(hmsParams.get(BaseMetastoreTableOperations.PREVIOUS_METADATA_LOCATION_PROP), prevSnapshot);
       Assert.assertEquals(hmsParams.get(BaseMetastoreTableOperations.METADATA_LOCATION_PROP), newSnapshot);
     } else {
-      Assert.assertEquals(6, hmsParams.size());
+      Assert.assertEquals(7, hmsParams.size());
     }
 
     // Remove some Iceberg props and see if they're removed from HMS table props as well
@@ -1309,15 +1372,17 @@ public class TestHiveIcebergStorageHandlerNoScan {
     };
 
     for (String command : commands) {
-      AssertHelpers.assertThrows("", IllegalArgumentException.class,
-          "Unsupported operation to use REPLACE COLUMNS", () -> shell.executeStatement(command));
+      Assertions.assertThatThrownBy(() -> shell.executeStatement(command))
+              .isInstanceOf(IllegalArgumentException.class)
+              .hasMessageContaining("Unsupported operation to use REPLACE COLUMNS");
     }
 
     // check no-op case too
     String command = "ALTER TABLE default.customers REPLACE COLUMNS (customer_id int, first_name string COMMENT 'This" +
         " is first name', last_name string COMMENT 'This is last name', address struct<city:string,street:string>)";
-    AssertHelpers.assertThrows("", IllegalArgumentException.class,
-        "No schema change detected", () -> shell.executeStatement(command));
+    Assertions.assertThatThrownBy(() -> shell.executeStatement(command))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("No schema change detected");
   }
 
   @Test
@@ -1410,9 +1475,9 @@ public class TestHiveIcebergStorageHandlerNoScan {
     };
 
     for (String command : commands) {
-      AssertHelpers.assertThrows("Should throw unsupported operation exception for queries with partition spec",
-          IllegalArgumentException.class, "Using partition spec in query is unsupported",
-          () -> shell.executeStatement(command));
+      Assertions.assertThatThrownBy(() -> shell.executeStatement(command))
+              .isInstanceOf(IllegalArgumentException.class)
+              .hasMessageContaining("Using partition spec in query is unsupported");
     }
   }
 
@@ -1426,6 +1491,13 @@ public class TestHiveIcebergStorageHandlerNoScan {
     HiveIcebergStorageHandler storageHandler = new HiveIcebergStorageHandler();
     storageHandler.setConf(shell.getHiveConf());
     URI uriForAuth = storageHandler.getURIForAuth(hmsTable);
+
+    Assert.assertEquals("iceberg://" +
+            HiveIcebergStorageHandler.encodeString(target.namespace().toString()) + "/" +
+            HiveIcebergStorageHandler.encodeString(target.name()) + "?snapshot=" +
+            HiveIcebergStorageHandler.encodeString(
+            URI.create(((BaseTable) table).operations().current().metadataFileLocation()).getPath()),
+        uriForAuth.toString());
 
     Assert.assertEquals("iceberg://" + target.namespace() + "/" + target.name() + "?snapshot=" +
         URI.create(((BaseTable) table).operations().current().metadataFileLocation()).getPath(),
@@ -1555,12 +1627,12 @@ public class TestHiveIcebergStorageHandlerNoScan {
     TableIdentifier targetIdentifier = TableIdentifier.of("default", "target");
     testTables.createTable(shell, targetIdentifier.name(), HiveIcebergStorageHandlerTestUtils.CUSTOMER_SCHEMA,
         PartitionSpec.unpartitioned(), FileFormat.PARQUET, Collections.emptyList(), 1, Collections.emptyMap());
-    AssertHelpers.assertThrows("should throw exception", IllegalArgumentException.class,
-        "Cannot change iceberg table",
-        () -> {
-          shell.executeStatement("ALTER TABLE " + targetIdentifier.name() + " SET TBLPROPERTIES('metadata_location'='" +
+    Assertions.assertThatThrownBy(() -> {
+      shell.executeStatement("ALTER TABLE " + targetIdentifier.name() + " SET TBLPROPERTIES('metadata_location'='" +
               metadataLocation + "')");
-        });
+    })
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Cannot change iceberg table");
   }
 
   @Test
@@ -1570,12 +1642,11 @@ public class TestHiveIcebergStorageHandlerNoScan {
         testTables.locationForCreateTableSQL(TableIdentifier.of("default", tableName)) +
         testTables.propertiesForCreateTableSQL(ImmutableMap.of());
     shell.executeStatement(createQuery);
-    AssertHelpers.assertThrows("should throw exception", IllegalArgumentException.class,
-        "Cannot perform table migration to Iceberg and setting the snapshot location in one step.",
-        () -> {
-          shell.executeStatement("ALTER TABLE " + tableName + " SET TBLPROPERTIES(" +
-              "'storage_handler'='org.apache.iceberg.mr.hive.HiveIcebergStorageHandler','metadata_location'='asdf')");
-        });
+    Assertions.assertThatThrownBy(() -> shell.executeStatement("ALTER TABLE " + tableName + " SET TBLPROPERTIES(" +
+            "'storage_handler'='org.apache.iceberg.mr.hive.HiveIcebergStorageHandler','metadata_location'='asdf')"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Cannot perform table migration to Iceberg " +
+                "and setting the snapshot location in one step.");
   }
 
   @Test
@@ -1616,30 +1687,159 @@ public class TestHiveIcebergStorageHandlerNoScan {
     shell.executeStatement("insert into source values(1)");
 
     // Run a CTLT query.
-    AssertHelpers.assertThrows("should throw exception", IllegalArgumentException.class,
-        " CTLT target table must be a HiveCatalog table", () -> {
-          shell.executeStatement(String.format("CREATE TABLE dest LIKE source STORED BY ICEBERG %s %s",
+    Assertions.assertThatThrownBy(() -> {
+      shell.executeStatement(String.format("CREATE TABLE dest LIKE source STORED BY ICEBERG %s %s",
               testTables.locationForCreateTableSQL(TableIdentifier.of("default", "dest")),
               testTables.propertiesForCreateTableSQL(ImmutableMap.of())));
-        });
+    })
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("CTLT target table must be a HiveCatalog table");
+  }
+
+  @Test
+  public void testCreateTemporaryTable() {
+    TableIdentifier identifier = TableIdentifier.of("default", "customers");
+    String query = String.format("CREATE temporary TABLE customers (customer_id BIGINT, first_name STRING, last_name " +
+        "STRING) STORED BY iceberg %s %s",
+        testTables.locationForCreateTableSQL(identifier),
+        testTables.propertiesForCreateTableSQL(ImmutableMap.of()));
+
+    Assertions.assertThatThrownBy(() -> {
+      shell.executeStatement(query);
+    })
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Creation of temporary iceberg tables is not supported");
   }
 
   @Test
   public void testParquetHiveCatalogValidation() throws TException, InterruptedException, IOException {
 
-    // Create a table with explicitly set parquet.compression
+    // Create a table with explicitly set parquet.compression & parquet.block.size
+    Map<String, String> props = Maps.newHashMap();
+    props.put(ParquetOutputFormat.BLOCK_SIZE, "10000");
+    props.put(ParquetOutputFormat.COMPRESSION, "SNAPPY");
     TableIdentifier target = TableIdentifier.of("default", "target");
     Table table = testTables.createTable(shell, target.name(), HiveIcebergStorageHandlerTestUtils.CUSTOMER_SCHEMA,
         PartitionSpec.unpartitioned(), FileFormat.PARQUET, HiveIcebergStorageHandlerTestUtils.CUSTOMER_RECORDS, 1,
-        Collections.singletonMap(ParquetOutputFormat.COMPRESSION, "SNAPPY"));
+        props);
 
     // Check the property got set in the hive table metadata.
     org.apache.hadoop.hive.metastore.api.Table hmsTable = shell.metastore().getTable(target);
     Assert.assertEquals("SNAPPY", hmsTable.getParameters().get(ParquetOutputFormat.COMPRESSION).toUpperCase());
+    Assert.assertEquals("10000", hmsTable.getParameters().get(ParquetOutputFormat.BLOCK_SIZE));
 
     // Check the property got set in the iceberg table metadata.
     Table icebergTable = testTables.loadTable(target);
     Assert.assertEquals("SNAPPY", icebergTable.properties().get(TableProperties.PARQUET_COMPRESSION).toUpperCase());
+    Assert.assertEquals("10000", icebergTable.properties().get(TableProperties.PARQUET_ROW_GROUP_SIZE_BYTES));
+  }
+
+  @Test
+  public void testConcurrentIcebergCommitsAndHiveAlterTableCalls() throws Exception {
+    Assume.assumeTrue(testTableType.equals(TestTables.TestTableType.HIVE_CATALOG));
+    TableIdentifier identifier = TableIdentifier.of("default", "customers");
+
+    testTables.createTable(
+        shell,
+        identifier.name(),
+        HiveIcebergStorageHandlerTestUtils.CUSTOMER_SCHEMA,
+        SPEC,
+        FileFormat.PARQUET,
+        ImmutableList.of());
+
+    org.apache.iceberg.Table icebergTable = testTables.loadTable(identifier);
+
+    // Avoid commit retry limits preventing any changes from being committed.
+    icebergTable.updateProperties().set("commit.retry.num-retries", "1000000").commit();
+
+    // Swap metastore client used by TestHiveShell with our test stub
+    IMetaStoreClient realMSC = shell.getSession().getMetaStoreClient();
+    IMetaStoreClient spyMSC = spy(realMSC);
+    shell.getSession().getSessionHive().setMSC(spyMSC);
+
+    // Simulate delay on alter table calls from Hive queries to ensure they will have worked on outdated Table objects
+    // by the time they intend to persist their changes into HMS
+    doAnswer(i -> {
+      Thread.sleep(3000);
+      return i.callRealMethod();
+    }).when(spyMSC).alter_table(any(String.class), any(String.class), any(String.class),
+        any(org.apache.hadoop.hive.metastore.api.Table.class), any(EnvironmentContext.class), isNull());
+
+    ExecutorService executorService =
+        MoreExecutors.getExitingExecutorService(
+            (ThreadPoolExecutor) Executors.newFixedThreadPool(1));
+
+    // Concurrent Insert
+    executorService.submit(
+        () -> {
+          try {
+            testTables.appendIcebergTable(
+                shell.getHiveConf(),
+                icebergTable,
+                FileFormat.PARQUET,
+                null,
+                HiveIcebergStorageHandlerTestUtils.CUSTOMER_RECORDS);
+          } catch (IOException e) {
+            throw new RuntimeException(e);
+          }
+        });
+
+    // Concurrent ALTER TABLE properties change
+    shell.executeStatement("ALTER TABLE default.customers SET TBLPROPERTIES ('dummyKey'='dummyValue')");
+
+    executorService.shutdown();
+    executorService.awaitTermination(1, TimeUnit.MINUTES);
+
+    // Verify that the insert was effective
+    Assert.assertEquals(((BaseTable) testTables.loadTable(identifier)).operations().current().metadataFileLocation(),
+        (long) HiveIcebergStorageHandlerTestUtils.CUSTOMER_RECORDS.size(),
+        shell.executeStatement("select count(*) from customers").get(0)[0]
+    );
+
+    // Verify that the alter table call was effective
+    Assert.assertEquals("dummyValue", shell.metastore().getTable(identifier).getParameters().get("dummyKey"));
+
+    // Should be the 4rd metadata version (1 empty base + 1 commit retry change + 1 insert + 1 property change)
+    Assert.assertEquals(3,
+        ((BaseTable) testTables.loadTable(identifier)).operations().current().previousFiles().size());
+  }
+
+  @Test
+  public void testCreateTableWithMetadataLocationWithoutSchema() throws IOException, TException, InterruptedException {
+    Assume.assumeTrue("Create with metadata location is only supported for Hive Catalog tables",
+        testTableType.equals(TestTables.TestTableType.HIVE_CATALOG));
+    TableIdentifier sourceIdentifier = TableIdentifier.of("default", "source");
+    PartitionSpec spec =
+        PartitionSpec.builderFor(HiveIcebergStorageHandlerTestUtils.CUSTOMER_SCHEMA).identity("customer_id").build();
+    List<Record> records = TestHelper.generateRandomRecords(HiveIcebergStorageHandlerTestUtils.CUSTOMER_SCHEMA, 4, 0L);
+    Table sourceTable =
+        testTables.createTable(shell, sourceIdentifier.name(), HiveIcebergStorageHandlerTestUtils.CUSTOMER_SCHEMA, spec,
+            FileFormat.PARQUET, records, 1,
+            ImmutableMap.<String, String>builder().put(InputFormatConfig.EXTERNAL_TABLE_PURGE, "FALSE").build());
+    String metadataLocation = ((BaseTable) sourceTable).operations().current().metadataFileLocation();
+    shell.executeStatement("DROP TABLE " + sourceIdentifier.name());
+    TableIdentifier targetIdentifier = TableIdentifier.of("default", "target");
+
+    String tblProps =
+        testTables.propertiesForCreateTableSQL(Collections.singletonMap("metadata_location", metadataLocation));
+
+    // Try the query with columns also specified, it should throw exception.
+    Assertions.assertThatThrownBy(() -> {
+      shell.executeStatement("CREATE EXTERNAL TABLE target (id int) STORED BY ICEBERG " +
+              testTables.locationForCreateTableSQL(targetIdentifier) + tblProps);
+    })
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("Column names can not be provided along with metadata location.");
+    shell.executeStatement(
+            "CREATE EXTERNAL TABLE target STORED BY ICEBERG " + testTables.locationForCreateTableSQL(targetIdentifier) +
+                    tblProps);
+
+    // Check the partition and the schema are preserved.
+    Table targetIcebergTable =
+        IcebergTableUtil.getTable(shell.getHiveConf(), shell.metastore().getTable(targetIdentifier));
+    Assert.assertEquals(1, targetIcebergTable.spec().fields().size());
+    Assert.assertEquals(sourceTable.spec().fields(), targetIcebergTable.spec().fields());
+    Assert.assertEquals(sourceTable.schema().toString(), targetIcebergTable.schema().toString());
   }
 
 
@@ -1665,6 +1865,41 @@ public class TestHiveIcebergStorageHandlerNoScan {
 
     Assert.assertEquals(expectedSchema, icebergSchema);
     Assert.assertEquals(expectedSchema, hmsSchema);
+  }
+
+  @Test
+  public void checkIcebergTableLocation() throws TException, InterruptedException, IOException {
+    Assume.assumeTrue("This test is only for hive catalog", testTableType == TestTables.TestTableType.HIVE_CATALOG);
+
+    String dBName = "testdb";
+    String tableName = "tbl";
+    String dbWithSuffix = "/" + dBName + ".db";
+    String dbManagedLocation = shell.getHiveConf().get(HiveConf.ConfVars.METASTOREWAREHOUSE.varname) + dbWithSuffix;
+    String dbExternalLocation = shell.getHiveConf().get(HiveConf.ConfVars.HIVE_METASTORE_WAREHOUSE_EXTERNAL.varname) +
+        dbWithSuffix;
+    Path noExistedTblPath = new Path(dbManagedLocation + "/" + tableName);
+    Path expectedTblPath = new Path(dbExternalLocation + "/" + tableName);
+
+    // Create a database with default external location and managed location.
+    shell.executeStatement("CREATE DATABASE " + dBName);
+
+    // Create a iceberg table without external keyword, and its location should on database external location.
+    shell.executeStatement("CREATE TABLE " + dBName + "." + tableName + " (id int) STORED BY ICEBERG");
+
+    // table location whose parent path is managed database location should not exist.
+    Assert.assertFalse(noExistedTblPath.getFileSystem(shell.getHiveConf()).exists(noExistedTblPath));
+
+    // Check the iceberg table location, whose parent path should be database external location.
+    org.apache.hadoop.hive.metastore.api.Table hmsTable = shell.metastore().getTable(dBName, tableName);
+    org.apache.iceberg.Table iceTable = testTables.loadTable(TableIdentifier.of(dBName, tableName));
+    Path hmsTblLocation = new Path(hmsTable.getSd().getLocation());
+    Assert.assertTrue(hmsTblLocation.getFileSystem(shell.getHiveConf()).exists(hmsTblLocation));
+    Assert.assertTrue(expectedTblPath.toString().equalsIgnoreCase(hmsTblLocation.toString()));
+    Assert.assertTrue(expectedTblPath.toString().equalsIgnoreCase(iceTable.location()));
+
+    shell.executeStatement("DROP TABLE " + dBName + "." + tableName);
+    // external table location should still exist if table is dropped as external.table.purge is default false.
+    Assert.assertTrue(hmsTblLocation.getFileSystem(shell.getHiveConf()).exists(hmsTblLocation));
   }
 
   private String getCurrentSnapshotForHiveCatalogTable(org.apache.iceberg.Table icebergTable) {

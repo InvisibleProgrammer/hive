@@ -233,7 +233,8 @@ public class TestFileUtils {
     HadoopShims shims = mock(HadoopShims.class);
     when(shims.runDistCp(Collections.singletonList(copySrc), copyDst, conf)).thenReturn(true);
 
-    Assert.assertTrue(FileUtils.copy(mockFs, copySrc, mockFs, copyDst, false, false, conf, shims));
+    DataCopyStatistics copyStatistics = new DataCopyStatistics();
+    Assert.assertTrue(FileUtils.copy(mockFs, copySrc, mockFs, copyDst, false, false, conf, shims, copyStatistics));
     verify(shims).runDistCp(Collections.singletonList(copySrc), copyDst, conf);
   }
 
@@ -301,6 +302,31 @@ public class TestFileUtils {
     
     RemoteIterator<LocatedFileStatus> itr = FileUtils.listFiles(fs, path, true, FileUtils.HIDDEN_FILES_PATH_FILTER);
     assertEquals(1, assertExpectedFilePaths(itr, Collections.singletonList("mock:/tmp/dummy")));
+  }
+
+  @Test
+  public void testPathEscapeChars() {
+    StringBuilder sb = new StringBuilder();
+    FileUtils.charToEscape.stream().forEach(integer -> sb.append((char) integer));
+    String path = sb.toString();
+    assertEquals(path, FileUtils.unescapePathName(FileUtils.escapePathName(path)));
+  }
+
+  @Test
+  public void testOzoneSameBucket() {
+    assertTrue(FileUtils.isSameOzoneBucket(new Path("ofs://ozone1/vol1/bucket1/dir1"),
+        new Path("ofs://ozone1/vol1/bucket1/dir2/file1")));
+    assertTrue(FileUtils.isSameOzoneBucket(new Path("ofs://ozone1/vol1/bucket1/"),
+        new Path("ofs://ozone1/vol1/bucket1/dir2/file1")));
+
+    assertFalse(
+        FileUtils.isSameOzoneBucket(new Path("ofs://ozone1/vol1/"), new Path("ofs://ozone1/vol1/bucket1/dir2/file1")));
+
+    assertFalse(FileUtils.isSameOzoneBucket(new Path("ofs://ozone1/vol1/bucket1/"),
+        new Path("ofs://ozone1/vol2/bucket1/dir2/file1")));
+
+    assertFalse(FileUtils.isSameOzoneBucket(new Path("ofs://ozone1/vol1/bucket1/"),
+        new Path("ofs://ozone1/vol1/bucket2/dir2/file1")));
   }
 
   private int assertExpectedFilePaths(RemoteIterator<? extends FileStatus> lfs, List<String> expectedPaths)

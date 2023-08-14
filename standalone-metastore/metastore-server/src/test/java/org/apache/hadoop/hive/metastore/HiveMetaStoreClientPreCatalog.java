@@ -443,6 +443,8 @@ public class HiveMetaStoreClientPreCatalog implements IMetaStoreClient, AutoClos
     boolean useCompactProtocol = MetastoreConf.getBoolVar(conf, ConfVars.USE_THRIFT_COMPACT_PROTOCOL);
     int clientSocketTimeout = (int) MetastoreConf.getTimeVar(conf,
         ConfVars.CLIENT_SOCKET_TIMEOUT, TimeUnit.MILLISECONDS);
+    int connectionTimeout = (int) MetastoreConf.getTimeVar(conf,
+        ConfVars.CLIENT_CONNECTION_TIMEOUT, TimeUnit.MILLISECONDS);
 
     for (int attempt = 0; !isConnected && attempt < retries; ++attempt) {
       for (URI store : metastoreUris) {
@@ -466,7 +468,7 @@ public class HiveMetaStoreClientPreCatalog implements IMetaStoreClient, AutoClos
 
               // Create an SSL socket and connect
               transport = SecurityUtils.getSSLSocket(store.getHost(), store.getPort(), clientSocketTimeout,
-                  trustStorePath, trustStorePassword, trustStoreType, trustStoreAlgorithm );
+                  connectionTimeout, trustStorePath, trustStorePassword, trustStoreType, trustStoreAlgorithm);
               LOG.info("Opened an SSL connection to metastore, current connections: " + connCount.incrementAndGet());
             } catch(IOException e) {
               throw new IllegalArgumentException(e);
@@ -476,7 +478,8 @@ public class HiveMetaStoreClientPreCatalog implements IMetaStoreClient, AutoClos
             }
           } else {
             try {
-              transport = new TSocket(new TConfiguration(),store.getHost(), store.getPort(), clientSocketTimeout);
+              transport = new TSocket(new TConfiguration(),
+                  store.getHost(), store.getPort(), clientSocketTimeout, connectionTimeout);
             } catch (TTransportException e) {
               tte = e;
               throw new MetaException(e.toString());
@@ -2418,6 +2421,11 @@ public class HiveMetaStoreClientPreCatalog implements IMetaStoreClient, AutoClos
   }
 
   @Override
+  public void addWriteIdsToMinHistory(long txnId, Map<String, Long> writeIds) throws TException {
+    client.add_write_ids_to_min_history(txnId, writeIds);
+  }
+
+  @Override
   public long openTxn(String user) throws TException {
     OpenTxnsResponse txns = openTxns(user, 1);
     return txns.getTxn_ids().get(0);
@@ -2474,6 +2482,11 @@ public class HiveMetaStoreClientPreCatalog implements IMetaStoreClient, AutoClos
   }
 
   @Override
+  public void rollbackTxn(AbortTxnRequest abortTxnRequest) throws NoSuchTxnException, TException {
+    client.abort_txn(abortTxnRequest);
+  }
+
+  @Override
   public void replRollbackTxn(long srcTxnId, String replPolicy, TxnType txnType) throws NoSuchTxnException, TException {
     AbortTxnRequest rqst = new AbortTxnRequest(srcTxnId);
     rqst.setReplPolicy(replPolicy);
@@ -2514,6 +2527,11 @@ public class HiveMetaStoreClientPreCatalog implements IMetaStoreClient, AutoClos
   @Override
   public void abortTxns(List<Long> txnids) throws NoSuchTxnException, TException {
     client.abort_txns(new AbortTxnsRequest(txnids));
+  }
+
+  @Override
+  public void abortTxns(AbortTxnsRequest abortTxnsRequest) throws NoSuchTxnException, TException {
+    client.abort_txns(abortTxnsRequest);
   }
 
   @Override
@@ -2679,9 +2697,13 @@ public class HiveMetaStoreClientPreCatalog implements IMetaStoreClient, AutoClos
   }
 
   @Override
-  public ShowCompactResponse showCompactions(String poolName) throws TException {
-    ShowCompactRequest request = new ShowCompactRequest();
-    request.setPoolName(poolName);
+  public AbortCompactResponse abortCompactions(AbortCompactionRequest request) throws TException{
+    return client.abort_Compactions(request);
+  }
+
+
+  @Override
+  public ShowCompactResponse showCompactions(ShowCompactRequest request) throws TException {
     return client.show_compact(request);
   }
 

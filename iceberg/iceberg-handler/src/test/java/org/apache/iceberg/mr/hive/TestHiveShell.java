@@ -87,6 +87,8 @@ public class TestHiveShell {
     hs2Conf.setVar(HiveConf.ConfVars.METASTOREURIS, metastore.hiveConf().getVar(HiveConf.ConfVars.METASTOREURIS));
     hs2Conf.setVar(HiveConf.ConfVars.METASTOREWAREHOUSE,
         metastore.hiveConf().getVar(HiveConf.ConfVars.METASTOREWAREHOUSE));
+    hs2Conf.setVar(HiveConf.ConfVars.HIVE_METASTORE_WAREHOUSE_EXTERNAL,
+        metastore.hiveConf().getVar(HiveConf.ConfVars.HIVE_METASTORE_WAREHOUSE_EXTERNAL));
 
     // Initializing RpcMetrics in a single JVM multiple times can cause issues
     DefaultMetricsSystem.setMiniClusterMode(true);
@@ -174,6 +176,10 @@ public class TestHiveShell {
     } else {
       return hs2Conf;
     }
+  }
+
+  public HiveSession getSession() {
+    return session;
   }
 
   private HiveConf initializeConf() {

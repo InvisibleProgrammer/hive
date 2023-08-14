@@ -61,6 +61,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.apache.hadoop.hive.common.AcidConstants.SOFT_DELETE_TABLE_PATTERN;
 
@@ -262,14 +263,14 @@ public class TestDbTxnManager2 extends DbTxnManagerEndToEndTestBase{
     //tries to get X lock on T1 and gets Waiting state
     ((DbTxnManager) txnMgr2).acquireLocks(driver.getPlan(), ctx, "Fiddler", false);
     List<ShowLocksResponseElement> locks = getLocks();
-    Assert.assertEquals("Unexpected lock count", 2, locks.size());
+    Assert.assertEquals("Unexpected lock count", 3, locks.size());
     checkLock(LockType.SHARED_READ, LockState.ACQUIRED, "default", "T6", null, locks);
     checkLock(LockType.EXCLUSIVE, LockState.WAITING, "default", "T6", null, locks);
     txnMgr.rollbackTxn(); //release S on T6
     //attempt to X on T6 again - succeed
     ((DbLockManager)txnMgr.getLockManager()).checkLock(locks.get(1).getLockid());
     locks = getLocks();
-    Assert.assertEquals("Unexpected lock count", 1, locks.size());
+    Assert.assertEquals("Unexpected lock count", 2, locks.size());
     checkLock(LockType.EXCLUSIVE, LockState.ACQUIRED, "default", "T6", null, locks);
     txnMgr2.rollbackTxn();
     driver.run("drop table if exists T6");
@@ -393,11 +394,11 @@ public class TestDbTxnManager2 extends DbTxnManagerEndToEndTestBase{
     driver.compileAndRespond("drop table TAB_BLOCKED", true);
     ((DbTxnManager)txnMgr2).acquireLocks(driver.getPlan(), ctx, "SAM I AM", false); //make non-blocking
     locks = getLocks();
-    Assert.assertEquals("Unexpected lock count", 2, locks.size());
+    Assert.assertEquals("Unexpected lock count", 3, locks.size());
     checkLock(LockType.SHARED_READ, LockState.ACQUIRED, "default", "TAB_BLOCKED", null, locks);
     checkLock(LockType.EXCLUSIVE, LockState.WAITING, "default", "TAB_BLOCKED", null, locks);
-    Assert.assertEquals("BlockedByExtId doesn't match", locks.get(0).getLockid(), locks.get(1).getBlockedByExtId());
-    Assert.assertEquals("BlockedByIntId doesn't match", locks.get(0).getLockIdInternal(), locks.get(1).getBlockedByIntId());
+    Assert.assertEquals("BlockedByExtId doesn't match", locks.get(0).getLockid(), locks.get(2).getBlockedByExtId());
+    Assert.assertEquals("BlockedByIntId doesn't match", locks.get(0).getLockIdInternal(), locks.get(2).getBlockedByIntId());
   }
 
   @Test
@@ -2465,6 +2466,114 @@ public class TestDbTxnManager2 extends DbTxnManagerEndToEndTestBase{
     Assert.assertTrue("Lost Update", isEqualCollection(res, asList("earl\t10", "amy\t10")));
   }
 
+  // The intent of this test is to cause multiple conflicts to the same query to test the conflict retry functionality.
+  @Test
+  public void testConcurrentConflictRetry() throws Exception {
+    dropTable(new String[]{"target"});
+
+    driver2 = Mockito.spy(driver2);
+    driver2.getConf().setBoolVar(HiveConf.ConfVars.TXN_WRITE_X_LOCK, true);
+    driver.run("create table target(i int) stored as orc tblproperties ('transactional'='true')");
+    driver.run("insert into target values (1),(1)");
+
+    DbTxnManager txnMgr2 = (DbTxnManager) TxnManagerFactory.getTxnManagerFactory().getTxnManager(conf);
+    swapTxnManager(txnMgr2);
+
+    // This partial mock allows us to execute a transaction that conflicts with the driver2 query in a controlled
+    // manner.
+    AtomicInteger lockAndRespondCount = new AtomicInteger();
+    Mockito.doAnswer((invocation) -> {
+      lockAndRespondCount.getAndIncrement();
+      // we want to make sure this transaction gets conflicted at least twice, to exercise the conflict retry loop
+      if (lockAndRespondCount.get() <= 2) {
+        swapTxnManager(txnMgr);
+        try {
+          // this should call a conflict with the current query being ran by driver2
+          driver.run("update target set i = 1 where i = 1");
+        } catch (Exception e) {
+          // do nothing
+        }
+        swapTxnManager(txnMgr2);
+      }
+      invocation.callRealMethod();
+      return null;
+    }).when(driver2).lockAndRespond();
+
+    driver2.run("update target set i = 1 where i = 1");
+
+    // we expected lockAndRespond to be called 3 times.
+    // 1 time after compilation, 2 more times due to the 2 conflicts
+    Assert.assertEquals(3, lockAndRespondCount.get());
+    swapTxnManager(txnMgr);
+    // we expect two rows
+    driver.run("select * from target");
+    List<String> res = new ArrayList<>();
+    driver.getFetchTask().fetch(res);
+    Assert.assertEquals(2, res.size());
+  }
+
+  @Test
+  public void testConcurrentConflictMaxRetryCount() throws Exception {
+    dropTable(new String[]{"target"});
+    driver2 = Mockito.spy(driver2);
+    driver2.getConf().setBoolVar(HiveConf.ConfVars.TXN_WRITE_X_LOCK, true);
+
+    final int maxRetries = 4;
+    driver2.getConf().setIntVar(HiveConf.ConfVars.HIVE_TXN_MAX_RETRYSNAPSHOT_COUNT, maxRetries);
+
+    driver.run("create table target(i int) stored as orc tblproperties ('transactional'='true')");
+    driver.run("insert into target values (1),(1)");
+
+    DbTxnManager txnMgr2 = (DbTxnManager) TxnManagerFactory.getTxnManagerFactory().getTxnManager(conf);
+    swapTxnManager(txnMgr2);
+
+    // This run should conflict with the above query and cause the "conflict lambda" to be execute,
+    // which will then also conflict with the driver2 query and cause it to retry. The intent here is
+    // to cause driver2's query to exceed HIVE_TXN_MAX_RETRYSNAPSHOT_COUNT and throw exception.
+    AtomicInteger lockAndRespondCount = new AtomicInteger();
+    Mockito.doAnswer((invocation) -> {
+      lockAndRespondCount.getAndIncrement();
+      // we want to make sure the transaction gets conflicted until it fails.
+      // +1 is for the initial lockAndRespond after compilation
+      if (lockAndRespondCount.get() <= 1 + maxRetries) {
+        swapTxnManager(txnMgr);
+        try {
+          // this should call a conflict with the current query being ran by driver2
+          driver.run("update target set i = 1 where i = 1");
+        } catch (Exception e) {
+          // do nothing
+        }
+        swapTxnManager(txnMgr2);
+      }
+      invocation.callRealMethod();
+      return null;
+    }).when(driver2).lockAndRespond();
+
+    boolean exceptionThrown = false;
+    // Start a query on driver2, we expect this query to never execute because the nature of the test it to conflict
+    // until HIVE_TXN_MAX_RETRYSNAPSHOT_COUNT is exceeded.
+    // We verify that it is never executed by counting the number of rows returned that have i = 1.
+    try {
+      driver2.run("update target set i = 2 where i = 1");
+    } catch (CommandProcessorException cpe) {
+      exceptionThrown = true;
+      Assert.assertTrue(
+          cpe.getMessage().contains("Operation could not be executed, snapshot was outdated when locks were acquired.")
+      );
+    }
+    Assert.assertTrue(exceptionThrown);
+    // +1 for the inital lockAndRespond after compilation, another +1 for the lockAndRespond that caused us
+    // to exceed max retries.
+    Assert.assertEquals(maxRetries+2, lockAndRespondCount.get());
+    swapTxnManager(txnMgr);
+
+    // we expect two rows
+    driver.run("select * from target where i = 1");
+    List<String> res = new ArrayList<>();
+    driver.getFetchTask().fetch(res);
+    Assert.assertEquals(2, res.size());
+  }
+
   @Test
   public void testMergeMultipleBranchesOptimistic() throws Exception {
     dropTable(new String[]{"target", "src1", "src2"});
@@ -3021,7 +3130,7 @@ public class TestDbTxnManager2 extends DbTxnManagerEndToEndTestBase{
     //tries to get X lock on T6 and gets Waiting state
     ((DbTxnManager) txnMgr2).acquireLocks(driver.getPlan(), ctx, "Fiddler", false);
     List<ShowLocksResponseElement> locks = getLocks();
-    Assert.assertEquals("Unexpected lock count", 2, locks.size());
+    Assert.assertEquals("Unexpected lock count", 3, locks.size());
     checkLock(LockType.SHARED_READ, LockState.ACQUIRED, "default", "T6", null, locks);
     long extLockId = checkLock(LockType.EXCLUSIVE, LockState.WAITING, "default", "T6", null, locks).getLockid();
 
@@ -3042,7 +3151,7 @@ public class TestDbTxnManager2 extends DbTxnManagerEndToEndTestBase{
         ex.getMessage());
     }
     locks = getLocks();
-    Assert.assertEquals("Unexpected lock count", (zeroWaitRead ? 2 : 3), locks.size());
+    Assert.assertEquals("Unexpected lock count", (zeroWaitRead ? 3 : 4), locks.size());
     checkLock(LockType.SHARED_READ, LockState.ACQUIRED, "default", "T6", null, locks);
     if (!zeroWaitRead) {
       checkLock(LockType.SHARED_READ, LockState.WAITING, "default", "T6", null, locks);
@@ -3386,6 +3495,8 @@ public class TestDbTxnManager2 extends DbTxnManagerEndToEndTestBase{
   @Test
   public void testRemoveDuplicateCompletedTxnComponents() throws Exception {
     dropTable(new String[] {"tab_acid"});
+    MetastoreConf.setBoolVar(conf, MetastoreConf.ConfVars.COMPACTOR_INITIATOR_ON, true);
+    MetastoreConf.setBoolVar(conf, MetastoreConf.ConfVars.COMPACTOR_CLEANER_ON, true);
 
     driver.run("create table if not exists tab_acid (a int) partitioned by (p string) " +
       "stored as orc TBLPROPERTIES ('transactional'='true')");
@@ -3650,7 +3761,7 @@ public class TestDbTxnManager2 extends DbTxnManagerEndToEndTestBase{
     }
     driver2.lockAndRespond();
     locks = getLocks();
-    Assert.assertEquals("Unexpected lock count", 1, locks.size());
+    Assert.assertEquals("Unexpected lock count", 2, locks.size());
     
     checkLock(blocking ? LockType.EXCLUSIVE : LockType.EXCL_WRITE, 
       LockState.ACQUIRED, "default", "tab_acid", null, locks);

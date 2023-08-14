@@ -30,6 +30,7 @@ import org.apache.hadoop.hive.metastore.api.MetaException;
 import org.apache.hadoop.hive.metastore.api.Table;
 import org.apache.hadoop.hive.metastore.api.TableValidWriteIds;
 import org.apache.hadoop.hive.metastore.api.hive_metastoreConstants;
+import org.apache.hadoop.hive.metastore.api.CompactionType;
 import org.apache.hadoop.hive.metastore.conf.MetastoreConf;
 import org.apache.hadoop.hive.metastore.conf.MetastoreConf.ConfVars;
 import org.apache.hadoop.hive.metastore.utils.JavaUtils;
@@ -59,30 +60,45 @@ import static org.apache.hadoop.hive.metastore.TransactionalValidationListener.D
 public class TxnUtils {
   private static final Logger LOG = LoggerFactory.getLogger(TxnUtils.class);
 
-  public static ValidTxnList createValidTxnListForCleaner(GetOpenTxnsResponse txns, long minOpenTxnGLB) {
-    long highWaterMark = minOpenTxnGLB - 1;
-    long[] abortedTxns = new long[txns.getOpen_txnsSize()];
+  /**
+   * Returns a valid txn list for cleaner.
+   * @param txns Response containing open txns list.
+   * @param minOpenTxn Minimum open txn which is min open write txn on the table in the case of abort cleanup.
+   * @param isAbortCleanup Whether the request is for abort cleanup.
+   * @return a valid txn list
+   */
+  public static ValidTxnList createValidTxnListForCleaner(GetOpenTxnsResponse txns, long minOpenTxn, boolean isAbortCleanup) {
+    long highWatermark = minOpenTxn - 1;
+    long[] exceptions = new long[txns.getOpen_txnsSize()];
     BitSet abortedBits = BitSet.valueOf(txns.getAbortedBits());
     int i = 0;
-    for(long txnId : txns.getOpen_txns()) {
-      if(txnId > highWaterMark) {
+    for (long txnId : txns.getOpen_txns()) {
+      if (txnId > highWatermark) {
         break;
       }
-      if(abortedBits.get(i)) {
-        abortedTxns[i] = txnId;
-      }
-      else {
-        assert false : JavaUtils.txnIdToString(txnId) + " is open and <= hwm:" + highWaterMark;
+      if (abortedBits.get(i)) {
+        exceptions[i] = txnId;
+      } else {
+        if (isAbortCleanup) {
+          exceptions[i] = txnId;
+        } else {
+          assert false : JavaUtils.txnIdToString(txnId) + " is open and <= hwm:" + highWatermark;
+        }
       }
       ++i;
     }
-    abortedTxns = Arrays.copyOf(abortedTxns, i);
-    BitSet bitSet = new BitSet(abortedTxns.length);
-    bitSet.set(0, abortedTxns.length);
-    //add ValidCleanerTxnList? - could be problematic for all the places that read it from
-    // string as they'd have to know which object to instantiate
-    return new ValidReadTxnList(abortedTxns, bitSet, highWaterMark, Long.MAX_VALUE);
+    exceptions = Arrays.copyOf(exceptions, i);
+    if (!isAbortCleanup) {
+      BitSet bitSet = new BitSet(exceptions.length);
+      bitSet.set(0, exceptions.length);
+      //add ValidCleanerTxnList? - could be problematic for all the places that read it from
+      // string as they'd have to know which object to instantiate
+      return new ValidReadTxnList(exceptions, bitSet, highWatermark, Long.MAX_VALUE);
+    } else {
+      return new ValidReadTxnList(exceptions, abortedBits, highWatermark, Long.MAX_VALUE);
+    }
   }
+
   /**
    * Transform a {@link org.apache.hadoop.hive.metastore.api.TableValidWriteIds} to a
    * {@link org.apache.hadoop.hive.common.ValidCompactorWriteIdList}.  This assumes that the caller intends to
@@ -94,8 +110,6 @@ public class TxnUtils {
    */
   public static ValidCompactorWriteIdList createValidCompactWriteIdList(TableValidWriteIds tableValidWriteIds) {
     String fullTableName = tableValidWriteIds.getFullTableName();
-    long highWater = tableValidWriteIds.getWriteIdHighWaterMark();
-    long minOpenWriteId = Long.MAX_VALUE;
     List<Long> invalids = tableValidWriteIds.getInvalidWriteIds();
     BitSet abortedBits = BitSet.valueOf(tableValidWriteIds.getAbortedBits());
     long[] exceptions = new long[invalids.size()];
@@ -104,20 +118,18 @@ public class TxnUtils {
       if (abortedBits.get(i)) {
         // Only need aborted since we don't consider anything above minOpenWriteId
         exceptions[i++] = writeId;
-      } else {
-        minOpenWriteId = Math.min(minOpenWriteId, writeId);
-      }
+      } 
     }
-    if(i < exceptions.length) {
+    if (i < exceptions.length) {
       exceptions = Arrays.copyOf(exceptions, i);
     }
-    highWater = minOpenWriteId == Long.MAX_VALUE ? highWater : minOpenWriteId - 1;
     BitSet bitSet = new BitSet(exceptions.length);
     bitSet.set(0, exceptions.length); // for ValidCompactorWriteIdList, everything in exceptions are aborted
-    if (minOpenWriteId == Long.MAX_VALUE) {
-      return new ValidCompactorWriteIdList(fullTableName, exceptions, bitSet, highWater);
+    if (tableValidWriteIds.isSetMinOpenWriteId()) {
+      long minOpenWriteId = tableValidWriteIds.getMinOpenWriteId();
+      return new ValidCompactorWriteIdList(fullTableName, exceptions, bitSet, minOpenWriteId - 1, minOpenWriteId);
     } else {
-      return new ValidCompactorWriteIdList(fullTableName, exceptions, bitSet, highWater, minOpenWriteId);
+      return new ValidCompactorWriteIdList(fullTableName, exceptions, bitSet, tableValidWriteIds.getWriteIdHighWaterMark());
     }
   }
 
@@ -447,7 +459,7 @@ public class TxnUtils {
         if (queryCounter % batchSize == 0) {
           sb.append("end;");
           String batch = sb.toString();
-          LOG.debug("Going to execute queries in oracle anonymous statement. " + batch);
+          LOG.debug("Going to execute queries in oracle anonymous statement. {}", batch);
           stmt.execute(batch);
           sb.setLength(0);
           sb.append("begin ");
@@ -456,7 +468,7 @@ public class TxnUtils {
       if (queryCounter % batchSize != 0) {
         sb.append("end;");
         String batch = sb.toString();
-        LOG.debug("Going to execute queries in oracle anonymous statement. " + batch);
+        LOG.debug("Going to execute queries in oracle anonymous statement. {}", batch);
         stmt.execute(batch);
       }
     } else {
@@ -475,17 +487,17 @@ public class TxnUtils {
     List<Integer> affectedRowsByQuery = new ArrayList<>();
     int queryCounter = 0;
     for (String query : queries) {
-      LOG.debug("Adding query to batch: <" + query + ">");
+      LOG.debug("Adding query to batch: <{}>", query);
       queryCounter++;
       stmt.addBatch(query);
       if (queryCounter % batchSize == 0) {
-        LOG.debug("Going to execute queries in batch. Batch size: " + batchSize);
+        LOG.debug("Going to execute queries in batch. Batch size: {}", batchSize);
         int[] affectedRecordsByQuery = stmt.executeBatch();
         Arrays.stream(affectedRecordsByQuery).forEach(affectedRowsByQuery::add);
       }
     }
     if (queryCounter % batchSize != 0) {
-      LOG.debug("Going to execute queries in batch. Batch size: " + queryCounter % batchSize);
+      LOG.debug("Going to execute queries in batch. Batch size: {}", queryCounter % batchSize);
       int[] affectedRecordsByQuery = stmt.executeBatch();
       Arrays.stream(affectedRecordsByQuery).forEach(affectedRowsByQuery::add);
     }
@@ -532,7 +544,7 @@ public class TxnUtils {
 
     try {
       FileStatus stat = fs.getFileStatus(p);
-      LOG.debug("Running job as " + stat.getOwner());
+      LOG.debug("Running job as {}", stat.getOwner());
       return stat.getOwner();
     } catch (AccessControlException e) {
       // TODO not sure this is the right exception
@@ -557,12 +569,52 @@ public class TxnUtils {
         LOG.error("Could not clean up file-system handles for UGI: " + ugi, exception);
       }
       if (wrapper.size() == 1) {
-        LOG.debug("Running job as " + wrapper.get(0));
+        LOG.debug("Running job as {}", wrapper.get(0));
         return wrapper.get(0);
       }
     }
-    LOG.error("Unable to stat file " + p + " as either current user(" + 
-        UserGroupInformation.getLoginUser() + ") or table owner(" + t.getOwner() + "), giving up");
+    LOG.error("Unable to stat file {} as either current user({}) or table owner({}), giving up", p,
+        UserGroupInformation.getLoginUser(), t.getOwner());
     throw new IOException("Unable to stat file: " + p);
+  }
+
+  public static CompactionType dbCompactionType2ThriftType(char dbValue) throws MetaException {
+    switch (dbValue) {
+      case TxnStore.MAJOR_TYPE:
+        return CompactionType.MAJOR;
+      case TxnStore.MINOR_TYPE:
+        return CompactionType.MINOR;
+      case TxnStore.REBALANCE_TYPE:
+        return CompactionType.REBALANCE;
+      case TxnStore.ABORT_TXN_CLEANUP_TYPE:
+        return CompactionType.ABORT_TXN_CLEANUP;
+      default:
+        throw new MetaException("Unexpected compaction type " + dbValue);
+    }
+  }
+
+  public static Character thriftCompactionType2DbType(CompactionType ct) throws MetaException {
+    switch (ct) {
+      case MAJOR:
+        return TxnStore.MAJOR_TYPE;
+      case MINOR:
+        return TxnStore.MINOR_TYPE;
+      case REBALANCE:
+        return TxnStore.REBALANCE_TYPE;
+      case ABORT_TXN_CLEANUP:
+        return TxnStore.ABORT_TXN_CLEANUP_TYPE;
+      default:
+        throw new MetaException("Unexpected compaction type " + ct);
+    }
+  }
+
+  /**
+   * A helper method to return SQL's 'IS NULL'
+   * clause whenever input is NULL.
+   * @param input A string to be compared to null.
+   * @return String
+   */
+  public static String nvl(String input) {
+    return input != null ? " = ? " : " IS NULL ";
   }
 }

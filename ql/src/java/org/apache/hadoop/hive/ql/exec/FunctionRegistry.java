@@ -198,6 +198,9 @@ import org.apache.hadoop.hive.ql.udf.UDFUnhex;
 import org.apache.hadoop.hive.ql.udf.UDFVersion;
 import org.apache.hadoop.hive.ql.udf.UDFWeekOfYear;
 import org.apache.hadoop.hive.ql.udf.UDFYear;
+import org.apache.hadoop.hive.ql.udf.UDFSinh;
+import org.apache.hadoop.hive.ql.udf.UDFCosh;
+import org.apache.hadoop.hive.ql.udf.UDFTanh;
 import org.apache.hadoop.hive.ql.udf.generic.*;
 import org.apache.hadoop.hive.ql.udf.ptf.MatchPath.MatchPathResolver;
 import org.apache.hadoop.hive.ql.udf.ptf.Noop.NoopResolver;
@@ -249,7 +252,12 @@ public final class FunctionRegistry {
   public static final String UNARY_PLUS_FUNC_NAME = "positive";
   public static final String UNARY_MINUS_FUNC_NAME = "negative";
 
+  public static final String BLOOM_FILTER_FUNCTION = "bloom_filter";
   public static final String WINDOWING_TABLE_FUNCTION = "windowingtablefunction";
+
+  public static final String ARRAY_FUNC_NAME = "array";
+  public static final String INLINE_FUNC_NAME = "inline";
+
   private static final String NOOP_TABLE_FUNCTION = "noop";
   private static final String NOOP_MAP_TABLE_FUNCTION = "noopwithmap";
   private static final String NOOP_STREAMING_TABLE_FUNCTION = "noopstreaming";
@@ -303,8 +311,10 @@ public final class FunctionRegistry {
     system.registerUDF("log2", UDFLog2.class, false);
     system.registerUDF("sin", UDFSin.class, false);
     system.registerUDF("asin", UDFAsin.class, false);
+    system.registerUDF("sinh", UDFSinh.class, false);
     system.registerUDF("cos", UDFCos.class, false);
     system.registerUDF("acos", UDFAcos.class, false);
+    system.registerUDF("cosh", UDFCosh.class, false);
     system.registerUDF("log10", UDFLog10.class, false);
     system.registerUDF("log", UDFLog.class, false);
     system.registerUDF("exp", UDFExp.class, false);
@@ -316,6 +326,7 @@ public final class FunctionRegistry {
     system.registerUDF("radians", UDFRadians.class, false);
     system.registerUDF("atan", UDFAtan.class, false);
     system.registerUDF("tan", UDFTan.class, false);
+    system.registerUDF("tanh", UDFTanh.class, false);
     system.registerUDF("e", UDFE.class, false);
     system.registerGenericUDF("factorial", GenericUDFFactorial.class);
     system.registerUDF("crc32", UDFCrc32.class, false);
@@ -553,7 +564,7 @@ public final class FunctionRegistry {
     system.registerGenericUDF("ndv_compute_bit_vector", GenericUDFNDVComputeBitVector.class);
     system.registerGenericUDAF("compute_bit_vector_hll", new GenericUDAFComputeBitVectorHLL());
     system.registerGenericUDAF("compute_bit_vector_fm", new GenericUDAFComputeBitVectorFMSketch());
-    system.registerGenericUDAF("bloom_filter", new GenericUDAFBloomFilter());
+    system.registerGenericUDAF(BLOOM_FILTER_FUNCTION, new GenericUDAFBloomFilter());
     system.registerGenericUDAF("approx_distinct", new GenericUDAFApproximateDistinct());
     system.registerUDAF("percentile", UDAFPercentile.class);
     system.registerGenericUDAF("percentile_cont", new GenericUDAFPercentileCont());
@@ -568,7 +579,7 @@ public final class FunctionRegistry {
     system.registerGenericUDF("java_method", GenericUDFReflect.class);
     system.registerGenericUDF("exception_in_vertex_udf", GenericUDFExceptionInVertex.class);
 
-    system.registerGenericUDF("array", GenericUDFArray.class);
+    system.registerGenericUDF(ARRAY_FUNC_NAME, GenericUDFArray.class);
     system.registerGenericUDF("assert_true", GenericUDFAssertTrue.class);
     system.registerGenericUDF("assert_true_oom", GenericUDFAssertTrueOOM.class);
     system.registerGenericUDF("map", GenericUDFMap.class);
@@ -593,6 +604,14 @@ public final class FunctionRegistry {
     system.registerGenericUDF("sort_array", GenericUDFSortArray.class);
     system.registerGenericUDF("sort_array_by", GenericUDFSortArrayByField.class);
     system.registerGenericUDF("array_contains", GenericUDFArrayContains.class);
+    system.registerGenericUDF("array_min", GenericUDFArrayMin.class);
+    system.registerGenericUDF("array_max", GenericUDFArrayMax.class);
+    system.registerGenericUDF("array_distinct", GenericUDFArrayDistinct.class);
+    system.registerGenericUDF("array_join", GenericUDFArrayJoin.class);
+    system.registerGenericUDF("array_slice", GenericUDFArraySlice.class);
+    system.registerGenericUDF("array_except", GenericUDFArrayExcept.class);
+    system.registerGenericUDF("array_intersect", GenericUDFArrayIntersect.class);
+    system.registerGenericUDF("array_union", GenericUDFArrayUnion.class);
     system.registerGenericUDF("deserialize", GenericUDFDeserialize.class);
     system.registerGenericUDF("sentences", GenericUDFSentences.class);
     system.registerGenericUDF("map_keys", GenericUDFMapKeys.class);
@@ -603,6 +622,7 @@ public final class FunctionRegistry {
     system.registerGenericUDF("least", GenericUDFLeast.class);
     system.registerGenericUDF("cardinality_violation", GenericUDFCardinalityViolation.class);
     system.registerGenericUDF("width_bucket", GenericUDFWidthBucket.class);
+    system.registerGenericUDF("typeof", GenericUDFTypeOf.class);
 
     system.registerGenericUDF("from_utc_timestamp", GenericUDFFromUtcTimestamp.class);
     system.registerGenericUDF("to_utc_timestamp", GenericUDFToUtcTimestamp.class);
@@ -622,7 +642,7 @@ public final class FunctionRegistry {
     // Generic UDTF's
     system.registerGenericUDTF("explode", GenericUDTFExplode.class);
     system.registerGenericUDTF("replicate_rows", GenericUDTFReplicateRows.class);
-    system.registerGenericUDTF("inline", GenericUDTFInline.class);
+    system.registerGenericUDTF(INLINE_FUNC_NAME, GenericUDTFInline.class);
     system.registerGenericUDTF("json_tuple", GenericUDTFJSONTuple.class);
     system.registerGenericUDTF("parse_url_tuple", GenericUDTFParseUrlTuple.class);
     system.registerGenericUDTF("posexplode", GenericUDTFPosExplode.class);
