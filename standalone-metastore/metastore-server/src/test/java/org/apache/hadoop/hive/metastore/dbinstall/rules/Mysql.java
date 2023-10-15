@@ -32,7 +32,7 @@ public class Mysql extends DatabaseRule {
 
   @Override
   public String[] getDockerAdditionalArgs() {
-    return buildArray("-p", "3306:3306", "-e", "MYSQL_ROOT_PASSWORD=" + getDbRootPassword(), "-d");
+    return buildArray("--platform", "linux/x86_64", "-p", "3306:3306", "-e", "MYSQL_ROOT_PASSWORD=" + getDbRootPassword(), "-d");
   }
 
   @Override

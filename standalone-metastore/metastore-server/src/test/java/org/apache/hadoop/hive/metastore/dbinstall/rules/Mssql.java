@@ -30,6 +30,8 @@ public class Mssql extends DatabaseRule {
   @Override
   public String[] getDockerAdditionalArgs() {
     return buildArray(
+  "--platform",
+        "linux/x86_64",
         "-p",
         "1433:1433",
         "-e",

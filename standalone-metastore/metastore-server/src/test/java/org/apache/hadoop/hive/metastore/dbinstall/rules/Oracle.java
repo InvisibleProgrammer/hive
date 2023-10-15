@@ -30,6 +30,8 @@ public class Oracle extends DatabaseRule {
   @Override
   public String[] getDockerAdditionalArgs() {
     return buildArray(
+            "--platform",
+        "linux/x86_64",
         "-p",
         "1521:1521",
         "-d",
