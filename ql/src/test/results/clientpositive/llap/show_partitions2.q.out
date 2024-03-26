@@ -174,8 +174,8 @@ ds=1980-11-10/hr=16/rs=AS
 ds=1980-11-09/hr=17/rs=EU
 ds=1980-11-09/hr=19/rs=AS
 ds=1980-11-10/hr=20/rs=AF
-ds=1980-11-10/hr=21/rs=NA
 ds=1980-11-10/hr=21/rs=AS
+ds=1980-11-10/hr=21/rs=NA
 ds=1980-11-11/hr=22/rs=AS
 ds=1980-11-09/hr=22/rs=AS
 ds=__HIVE_DEFAULT_PARTITION__/hr=__HIVE_DEFAULT_PARTITION__/rs=AS
@@ -188,14 +188,14 @@ POSTHOOK: query: SHOW PARTITIONS mpart1 PARTITION (rs='AS') ORDER BY ds DESC
 POSTHOOK: type: SHOWPARTITIONS
 POSTHOOK: Input: default@mpart1
 ds=__HIVE_DEFAULT_PARTITION__/hr=__HIVE_DEFAULT_PARTITION__/rs=AS
-ds=1980-11-11/hr=12/rs=AS
 ds=1980-11-11/hr=22/rs=AS
+ds=1980-11-11/hr=12/rs=AS
 ds=1980-11-11/hr=16/rs=AS
 ds=1980-11-10/hr=21/rs=AS
-ds=1980-11-10/hr=16/rs=AS
 ds=1980-11-10/hr=10/rs=AS
-ds=1980-11-09/hr=22/rs=AS
+ds=1980-11-10/hr=16/rs=AS
 ds=1980-11-09/hr=19/rs=AS
+ds=1980-11-09/hr=22/rs=AS
 PREHOOK: query: SHOW PARTITIONS mpart1 LIMIT 3
 PREHOOK: type: SHOWPARTITIONS
 PREHOOK: Input: default@mpart1
@@ -211,8 +211,8 @@ PREHOOK: Input: default@mpart1
 POSTHOOK: query: SHOW PARTITIONS mpart1 PARTITION(ds = '1980-11-10') LIMIT 3
 POSTHOOK: type: SHOWPARTITIONS
 POSTHOOK: Input: default@mpart1
-ds=1980-11-10/hr=12/rs=EU
 ds=1980-11-10/hr=10/rs=AS
+ds=1980-11-10/hr=12/rs=EU
 ds=1980-11-10/hr=15/rs=EU
 PREHOOK: query: SHOW PARTITIONS mpart1 where ds = '__HIVE_DEFAULT_PARTITION__' AND hr = '__HIVE_DEFAULT_PARTITION__'
 PREHOOK: type: SHOWPARTITIONS

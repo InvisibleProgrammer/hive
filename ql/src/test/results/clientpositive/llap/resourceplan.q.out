@@ -509,17 +509,27 @@ plan_2	default	DISABLED	10	default
 PREHOOK: query: CREATE RESOURCE PLAN plan_2
 PREHOOK: type: CREATE RESOURCEPLAN
 PREHOOK: Output: dummyHostnameForTest
-FAILED: Execution Error, return code 10417 from org.apache.hadoop.hive.ql.ddl.DDLTask. Resource plan plan_2 already exists
+FAILED: Execution Error, return code 40000 from org.apache.hadoop.hive.ql.ddl.DDLTask. MetaException(message:JDODataStoreException: Insert of object "org.apache.hadoop.hive.metastore.model.MWMResourcePlan@6486bc24" using statement "INSERT INTO "WM_RESOURCEPLAN" ("RP_ID","DEFAULT_POOL_ID","NAME","NS","QUERY_PARALLELISM","STATUS") VALUES (?,?,?,?,?,?)" failed : ERROR: duplicate key value violates unique constraint "UNIQUE_WM_RESOURCEPLAN"
+  Detail: Key ("NS", "NAME")=(default, plan_2) already exists.
+Root cause: org.postgresql.util.PSQLException: ERROR: duplicate key value violates unique constraint "UNIQUE_WM_RESOURCEPLAN"
+  Detail: Key ("NS", "NAME")=(default, plan_2) already exists.)
 PREHOOK: query: CREATE RESOURCE PLAN IF NOT EXISTS plan_2
 PREHOOK: type: CREATE RESOURCEPLAN
 PREHOOK: Output: dummyHostnameForTest
-POSTHOOK: query: CREATE RESOURCE PLAN IF NOT EXISTS plan_2
-POSTHOOK: type: CREATE RESOURCEPLAN
+FAILED: Execution Error, return code 40000 from org.apache.hadoop.hive.ql.ddl.DDLTask. MetaException(message:JDODataStoreException: Insert of object "org.apache.hadoop.hive.metastore.model.MWMResourcePlan@7cc12fd8" using statement "INSERT INTO "WM_RESOURCEPLAN" ("RP_ID","DEFAULT_POOL_ID","NAME","NS","QUERY_PARALLELISM","STATUS") VALUES (?,?,?,?,?,?)" failed : ERROR: duplicate key value violates unique constraint "UNIQUE_WM_RESOURCEPLAN"
+  Detail: Key ("NS", "NAME")=(default, plan_2) already exists.
+Root cause: org.postgresql.util.PSQLException: ERROR: duplicate key value violates unique constraint "UNIQUE_WM_RESOURCEPLAN"
+  Detail: Key ("NS", "NAME")=(default, plan_2) already exists.)
 FAILED: SemanticException Invalid create arguments (tok_create_rp plan_3 (tok_query_parallelism 5) (tok_default_pool all))
 PREHOOK: query: ALTER RESOURCE PLAN plan_1 RENAME TO plan_2
 PREHOOK: type: ALTER RESOURCEPLAN
 PREHOOK: Output: dummyHostnameForTest
-FAILED: Execution Error, return code 40000 from org.apache.hadoop.hive.ql.ddl.DDLTask. AlreadyExistsException(message:Resource plan name should be unique: )
+FAILED: Execution Error, return code 40000 from org.apache.hadoop.hive.ql.ddl.DDLTask. MetaException(message:JDODataStoreException: Update of object "org.apache.hadoop.hive.metastore.model.MWMResourcePlan@201d71b4" using statement "UPDATE "WM_RESOURCEPLAN" SET "NAME"=? WHERE "RP_ID"=?" failed : org.postgresql.util.PSQLException: ERROR: duplicate key value violates unique constraint "UNIQUE_WM_RESOURCEPLAN"
+  Detail: Key ("NS", "NAME")=(default, plan_2) already exists.
+#### A masked pattern was here ####
+
+Root cause: org.postgresql.util.PSQLException: ERROR: duplicate key value violates unique constraint "UNIQUE_WM_RESOURCEPLAN"
+  Detail: Key ("NS", "NAME")=(default, plan_2) already exists.)
 PREHOOK: query: SELECT * FROM SYS.WM_RESOURCEPLANS
 PREHOOK: type: QUERY
 PREHOOK: Input: sys@wm_resourceplans
@@ -1001,7 +1011,10 @@ plan_1	default	trigger_1	BYTES_READ > '10kb'	KILL
 PREHOOK: query: CREATE TRIGGER plan_1.trigger_1 WHEN ELAPSED_TIME > 300 DO KILL
 PREHOOK: type: CREATE TRIGGER
 PREHOOK: Output: dummyHostnameForTest
-FAILED: Execution Error, return code 40000 from org.apache.hadoop.hive.ql.ddl.DDLTask. AlreadyExistsException(message:Trigger already exists, use alter: )
+FAILED: Execution Error, return code 40000 from org.apache.hadoop.hive.ql.ddl.DDLTask. MetaException(message:JDODataStoreException: Insert of object "org.apache.hadoop.hive.metastore.model.MWMTrigger@1b714fa8" using statement "INSERT INTO "WM_TRIGGER" ("TRIGGER_ID","ACTION_EXPRESSION","IS_IN_UNMANAGED","NAME","RP_ID","TRIGGER_EXPRESSION") VALUES (?,?,?,?,?,?)" failed : ERROR: duplicate key value violates unique constraint "UNIQUE_WM_TRIGGER"
+  Detail: Key ("RP_ID", "NAME")=(26, trigger_1) already exists.
+Root cause: org.postgresql.util.PSQLException: ERROR: duplicate key value violates unique constraint "UNIQUE_WM_TRIGGER"
+  Detail: Key ("RP_ID", "NAME")=(26, trigger_1) already exists.)
 FAILED: ParseException line 4:60 mismatched input 'AND' expecting DO near ''30sec'' in create trigger statement
 FAILED: ParseException line 2:63 mismatched input 'OR' expecting DO near ''30second'' in create trigger statement
 FAILED: ParseException line 2:50 mismatched input '>=' expecting > near 'ELAPSED_TIME' in comparisionOperator
@@ -1256,7 +1269,10 @@ FAILED: SemanticException query_parallelism should be specified for a pool
 PREHOOK: query: CREATE POOL plan_2.default WITH ALLOC_FRACTION=1.0, QUERY_PARALLELISM=5
 PREHOOK: type: CREATE POOL
 PREHOOK: Output: dummyHostnameForTest
-FAILED: Execution Error, return code 40000 from org.apache.hadoop.hive.ql.ddl.DDLTask. AlreadyExistsException(message:Pool already exists: )
+FAILED: Execution Error, return code 40000 from org.apache.hadoop.hive.ql.ddl.DDLTask. MetaException(message:JDODataStoreException: Insert of object "org.apache.hadoop.hive.metastore.model.MWMPool@933fa17" using statement "INSERT INTO "WM_POOL" ("POOL_ID","ALLOC_FRACTION","PATH","QUERY_PARALLELISM","RP_ID","SCHEDULING_POLICY") VALUES (?,?,?,?,?,?)" failed : ERROR: duplicate key value violates unique constraint "UNIQUE_WM_POOL"
+  Detail: Key ("RP_ID", "PATH")=(2, default) already exists.
+Root cause: org.postgresql.util.PSQLException: ERROR: duplicate key value violates unique constraint "UNIQUE_WM_POOL"
+  Detail: Key ("RP_ID", "PATH")=(2, default) already exists.)
 PREHOOK: query: SELECT * FROM SYS.WM_POOLS
 PREHOOK: type: QUERY
 PREHOOK: Input: sys@wm_pools
@@ -1975,7 +1991,9 @@ plan_2	default	USER	user2	def	1
 PREHOOK: query: DROP POOL plan_2.def.c1
 PREHOOK: type: DROP POOL
 PREHOOK: Output: dummyHostnameForTest
-FAILED: Execution Error, return code 40000 from org.apache.hadoop.hive.ql.ddl.DDLTask. InvalidOperationException(message:Please remove all mappings for this pool.)
+FAILED: Execution Error, return code 40000 from org.apache.hadoop.hive.ql.ddl.DDLTask. MetaException(message:JDODataStoreException: Exception thrown flushing changes to datastore
+Root cause: org.postgresql.util.PSQLException: ERROR: update or delete on table "WM_POOL" violates foreign key constraint "WM_MAPPING_FK2" on table "WM_MAPPING"
+  Detail: Key (POOL_ID)=(16) is still referenced from table "WM_MAPPING".)
 PREHOOK: query: EXPLAIN DROP USER MAPPING "user2" in plan_2
 PREHOOK: type: DROP MAPPING
 PREHOOK: Output: dummyHostnameForTest

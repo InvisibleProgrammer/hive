@@ -58,8 +58,8 @@ PREHOOK: Input: default@alter_table_cascade
 POSTHOOK: query: show partitions alter_table_cascade
 POSTHOOK: type: SHOWPARTITIONS
 POSTHOOK: Input: default@alter_table_cascade
-p1=__HIVE_DEFAULT_PARTITION__/p2=123
 p1=abc/p2=123
+p1=__HIVE_DEFAULT_PARTITION__/p2=123
 PREHOOK: query: describe alter_table_cascade
 PREHOOK: type: DESCTABLE
 PREHOOK: Input: default@alter_table_cascade
@@ -875,8 +875,8 @@ PREHOOK: Input: default@alter_table_restrict
 POSTHOOK: query: show partitions alter_table_restrict
 POSTHOOK: type: SHOWPARTITIONS
 POSTHOOK: Input: default@alter_table_restrict
-p1=__HIVE_DEFAULT_PARTITION__/p2=123
 p1=abc/p2=123
+p1=__HIVE_DEFAULT_PARTITION__/p2=123
 PREHOOK: query: describe alter_table_restrict
 PREHOOK: type: DESCTABLE
 PREHOOK: Input: default@alter_table_restrict

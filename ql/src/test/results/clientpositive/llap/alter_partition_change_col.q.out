@@ -48,8 +48,8 @@ PREHOOK: Input: default@alter_partition_change_col1
 POSTHOOK: query: show partitions alter_partition_change_col1
 POSTHOOK: type: SHOWPARTITIONS
 POSTHOOK: Input: default@alter_partition_change_col1
-p1=__HIVE_DEFAULT_PARTITION__/p2=123
 p1=abc/p2=123
+p1=__HIVE_DEFAULT_PARTITION__/p2=123
 PREHOOK: query: select * from alter_partition_change_col1 where p1='abc'
 PREHOOK: type: QUERY
 PREHOOK: Input: default@alter_partition_change_col1

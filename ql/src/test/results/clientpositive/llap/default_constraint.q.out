@@ -1585,8 +1585,8 @@ Sort Columns:       	[]
 # Unique Constraints	 	 
 Table:              	default.numericdatatype_n1	 
 Constraint Name:    	uk1                 	 
-Column Name:a       	Key Sequence:1      	 
 Column Name:b       	Key Sequence:2      	 
+Column Name:a       	Key Sequence:1      	 
 	 	 
 	 	 
 # Default Constraints	 	 
@@ -1759,8 +1759,8 @@ Sort Columns:       	[]
 # Unique Constraints	 	 
 Table:              	default.numericdatatype_n1	 
 Constraint Name:    	uk1                 	 
-Column Name:a       	Key Sequence:1      	 
 Column Name:b       	Key Sequence:2      	 
+Column Name:a       	Key Sequence:1      	 
 	 	 
 	 	 
 # Not Null Constraints	 	 
@@ -1837,8 +1837,8 @@ Sort Columns:       	[]
 # Unique Constraints	 	 
 Table:              	default.numericdatatype_n1	 
 Constraint Name:    	uk1                 	 
-Column Name:a       	Key Sequence:1      	 
 Column Name:b       	Key Sequence:2      	 
+Column Name:a       	Key Sequence:1      	 
 	 	 
 	 	 
 # Not Null Constraints	 	 
@@ -2022,8 +2022,8 @@ Sort Columns:       	[]
 # Unique Constraints	 	 
 Table:              	default.numericdatatype_n1	 
 Constraint Name:    	uk1                 	 
-Column Name:a       	Key Sequence:1      	 
 Column Name:b       	Key Sequence:2      	 
+Column Name:a       	Key Sequence:1      	 
 	 	 
 	 	 
 # Not Null Constraints	 	 
@@ -2103,8 +2103,8 @@ Sort Columns:       	[]
 # Unique Constraints	 	 
 Table:              	default.numericdatatype_n1	 
 Constraint Name:    	uk1                 	 
-Column Name:a       	Key Sequence:1      	 
 Column Name:b       	Key Sequence:2      	 
+Column Name:a       	Key Sequence:1      	 
 	 	 
 	 	 
 # Not Null Constraints	 	 
@@ -2181,8 +2181,8 @@ Sort Columns:       	[]
 # Unique Constraints	 	 
 Table:              	default.numericdatatype_n1	 
 Constraint Name:    	uk1                 	 
-Column Name:a       	Key Sequence:1      	 
 Column Name:b       	Key Sequence:2      	 
+Column Name:a       	Key Sequence:1      	 
 	 	 
 	 	 
 # Not Null Constraints	 	 
@@ -2791,8 +2791,8 @@ Sort Columns:       	[]
 # Unique Constraints	 	 
 Table:              	default.numericdatatype_n1	 
 Constraint Name:    	uk1                 	 
-Column Name:a       	Key Sequence:1      	 
 Column Name:b       	Key Sequence:2      	 
+Column Name:a       	Key Sequence:1      	 
 	 	 
 	 	 
 # Default Constraints	 	 

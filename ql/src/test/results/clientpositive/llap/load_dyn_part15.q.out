@@ -36,6 +36,6 @@ PREHOOK: Input: default@load_dyn_part15_test
 POSTHOOK: query: show partitions load_dyn_part15_test
 POSTHOOK: type: SHOWPARTITIONS
 POSTHOOK: Input: default@load_dyn_part15_test
-part_key=%7B2
 part_key=1
 part_key=3%5D
+part_key=%7B2

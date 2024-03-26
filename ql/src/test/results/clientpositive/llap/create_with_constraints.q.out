@@ -294,7 +294,7 @@ b                   	string
 	 	 
 #### A masked pattern was here ####
 Constraints	Primary Key for default.table10:[a], Constraint Name: pk10	 
-Foreign Keys for default.table10:[ {Constraint Name: #### A masked pattern was here ####, (Parent Column Name: default.table9.a, Column Name: a, Key Sequence: 1), (Parent Column Name: default.table9.b, Column Name: b, Key Sequence: 2)}]	 	 
+Foreign Keys for default.table10:[ {Constraint Name: #### A masked pattern was here ####, (Parent Column Name: default.table9.b, Column Name: b, Key Sequence: 2), (Parent Column Name: default.table9.a, Column Name: a, Key Sequence: 1)}]	 	 
 PREHOOK: query: DESCRIBE EXTENDED table11
 PREHOOK: type: DESCTABLE
 PREHOOK: Input: default@table11
@@ -307,7 +307,7 @@ c                   	string
 	 	 
 #### A masked pattern was here ####
 Constraints	Primary Key for default.table11:[a], Constraint Name: pk11	 
-Foreign Keys for default.table11:[ {Constraint Name: fk11_1, (Parent Column Name: default.table9.a, Column Name: a, Key Sequence: 1), (Parent Column Name: default.table9.b, Column Name: b, Key Sequence: 2)}]	 	 
+Foreign Keys for default.table11:[ {Constraint Name: fk11_1, (Parent Column Name: default.table9.b, Column Name: b, Key Sequence: 2), (Parent Column Name: default.table9.a, Column Name: a, Key Sequence: 1)}]	 	 
 PREHOOK: query: DESCRIBE EXTENDED table12
 PREHOOK: type: DESCTABLE
 PREHOOK: Input: default@table12
@@ -428,7 +428,7 @@ b                   	string
 b                   	string              	                    
 	 	 
 #### A masked pattern was here ####
-Constraints	Unique Constraints for default.table21:[ {Constraint Name: uk21_1, (Column Name: a, Key Sequence: 1), (Column Name: b, Key Sequence: 2)}]	 
+Constraints	Unique Constraints for default.table21:[ {Constraint Name: uk21_1, (Column Name: b, Key Sequence: 2), (Column Name: a, Key Sequence: 1)}]	 
 PREHOOK: query: DESCRIBE EXTENDED table22
 PREHOOK: type: DESCTABLE
 PREHOOK: Input: default@table22
@@ -908,8 +908,8 @@ Column Name:        	a
 # Foreign Keys	 	 
 Table:              	default.table10     	 
 Constraint Name:    	#### A masked pattern was here ####	 
-Parent Column Name:default.table9.a	Column Name:a       	Key Sequence:1      
 Parent Column Name:default.table9.b	Column Name:b       	Key Sequence:2      
+Parent Column Name:default.table9.a	Column Name:a       	Key Sequence:1      
 	 	 
 PREHOOK: query: DESCRIBE FORMATTED table11
 PREHOOK: type: DESCTABLE
@@ -958,8 +958,8 @@ Column Name:        	a
 # Foreign Keys	 	 
 Table:              	default.table11     	 
 Constraint Name:    	fk11_1              	 
-Parent Column Name:default.table9.a	Column Name:a       	Key Sequence:1      
 Parent Column Name:default.table9.b	Column Name:b       	Key Sequence:2      
+Parent Column Name:default.table9.a	Column Name:a       	Key Sequence:1      
 	 	 
 PREHOOK: query: DESCRIBE FORMATTED table12
 PREHOOK: type: DESCTABLE
@@ -1390,8 +1390,8 @@ Storage Desc Params:
 # Unique Constraints	 	 
 Table:              	default.table21     	 
 Constraint Name:    	uk21_1              	 
-Column Name:a       	Key Sequence:1      	 
 Column Name:b       	Key Sequence:2      	 
+Column Name:a       	Key Sequence:1      	 
 	 	 
 PREHOOK: query: DESCRIBE FORMATTED table22
 PREHOOK: type: DESCTABLE
@@ -2162,8 +2162,8 @@ Storage Desc Params:
 # Unique Constraints	 	 
 Table:              	default.table18     	 
 Constraint Name:    	uk18_2              	 
-Column Name:a       	Key Sequence:1      	 
 Column Name:b       	Key Sequence:2      	 
+Column Name:a       	Key Sequence:1      	 
 	 	 
 PREHOOK: query: ALTER TABLE table12 CHANGE COLUMN b b STRING CONSTRAINT nn12_2 NOT NULL DISABLE NOVALIDATE
 PREHOOK: type: ALTERTABLE_RENAMECOL

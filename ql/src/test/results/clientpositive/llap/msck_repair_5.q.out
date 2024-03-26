@@ -30,7 +30,7 @@ PREHOOK: Output: default@repairtable_n5
 POSTHOOK: query: MSCK REPAIR TABLE repairtable_n5
 POSTHOOK: type: MSCK
 POSTHOOK: Output: default@repairtable_n5
-Partitions not in metastore:	repairtable_n5:country=India	repairtable_n5:country=US	repairtable_n5:country=us
+Partitions not in metastore:	repairtable_n5:country=India	repairtable_n5:country=US
 #### A masked pattern was here ####
 PREHOOK: query: show partitions repairtable_n5
 PREHOOK: type: SHOWPARTITIONS
@@ -40,7 +40,6 @@ POSTHOOK: type: SHOWPARTITIONS
 POSTHOOK: Input: default@repairtable_n5
 country=India
 country=US
-country=us
 PREHOOK: query: DROP TABLE default.repairtable_n5
 PREHOOK: type: DROPTABLE
 PREHOOK: Input: default@repairtable_n5

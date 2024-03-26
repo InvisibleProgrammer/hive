@@ -154,9 +154,9 @@ POSTHOOK: query: show partitions ptestfilter_n2
 POSTHOOK: type: SHOWPARTITIONS
 POSTHOOK: Input: default@ptestfilter_n2
 c=Germany/d=2
-c=Uganda/d=__HIVE_DEFAULT_PARTITION__
 c=__HIVE_DEFAULT_PARTITION__/d=2
 c=__HIVE_DEFAULT_PARTITION__/d=__HIVE_DEFAULT_PARTITION__
+c=Uganda/d=__HIVE_DEFAULT_PARTITION__
 PREHOOK: query: alter table ptestfilter_n2 drop partition (c='__HIVE_DEFAULT_PARTITION__')
 PREHOOK: type: ALTERTABLE_DROPPARTS
 PREHOOK: Input: default@ptestfilter_n2
@@ -236,8 +236,8 @@ PREHOOK: Input: default@ptestfilter_n2
 POSTHOOK: query: show partitions ptestfilter_n2
 POSTHOOK: type: SHOWPARTITIONS
 POSTHOOK: Input: default@ptestfilter_n2
-c=Uganda/d=__HIVE_DEFAULT_PARTITION__
 c=__HIVE_DEFAULT_PARTITION__/d=3
+c=Uganda/d=__HIVE_DEFAULT_PARTITION__
 PREHOOK: query: drop table ptestfilter_n2
 PREHOOK: type: DROPTABLE
 PREHOOK: Input: default@ptestfilter_n2

@@ -32,4 +32,36 @@ POSTHOOK: type: QUERY
 POSTHOOK: Input: default@foo
 POSTHOOK: Output: default@foo_p@p=a 
 POSTHOOK: Lineage: foo_p PARTITION(p=a ).d SIMPLE [(foo)foo.FieldSchema(name:d, type:string, comment:null), ]
-FAILED: SemanticException [Error 10006]: Line 3:29 Partition not found '"a"'
+PREHOOK: query: insert into foo_p partition (p="a") select foo.d from foo
+PREHOOK: type: QUERY
+PREHOOK: Input: default@foo
+PREHOOK: Output: default@foo_p@p=a
+POSTHOOK: query: insert into foo_p partition (p="a") select foo.d from foo
+POSTHOOK: type: QUERY
+POSTHOOK: Input: default@foo
+POSTHOOK: Output: default@foo_p@p=a
+POSTHOOK: Lineage: foo_p PARTITION(p=a).d SIMPLE [(foo)foo.FieldSchema(name:d, type:string, comment:null), ]
+PREHOOK: query: select * from foo_p where p="a "
+PREHOOK: type: QUERY
+PREHOOK: Input: default@foo_p
+PREHOOK: Input: default@foo_p@p=a 
+PREHOOK: Output: file:/Users/zsoltmiskolczi/work/hive/upstream/itests/qtest/target/tmp/localscratchdir/c9dacfe3-7b90-4e62-811f-174aaeec53c7/hive_2024-03-25_04-14-40_795_7351897328613594635-1/-mr-10001
+POSTHOOK: query: select * from foo_p where p="a "
+POSTHOOK: type: QUERY
+POSTHOOK: Input: default@foo_p
+POSTHOOK: Input: default@foo_p@p=a 
+POSTHOOK: Output: file:/Users/zsoltmiskolczi/work/hive/upstream/itests/qtest/target/tmp/localscratchdir/c9dacfe3-7b90-4e62-811f-174aaeec53c7/hive_2024-03-25_04-14-40_795_7351897328613594635-1/-mr-10001
+1	a 
+PREHOOK: query: select * from foo_p where p="a"
+PREHOOK: type: QUERY
+PREHOOK: Input: default@foo_p
+PREHOOK: Input: default@foo_p@p=a
+PREHOOK: Output: file:/Users/zsoltmiskolczi/work/hive/upstream/itests/qtest/target/tmp/localscratchdir/c9dacfe3-7b90-4e62-811f-174aaeec53c7/hive_2024-03-25_04-14-41_592_2724829305925345475-1/-mr-10001
+POSTHOOK: query: select * from foo_p where p="a"
+POSTHOOK: type: QUERY
+POSTHOOK: Input: default@foo_p
+POSTHOOK: Input: default@foo_p@p=a
+POSTHOOK: Output: file:/Users/zsoltmiskolczi/work/hive/upstream/itests/qtest/target/tmp/localscratchdir/c9dacfe3-7b90-4e62-811f-174aaeec53c7/hive_2024-03-25_04-14-41_592_2724829305925345475-1/-mr-10001
+1	a
+FAILED: AssertionError java.lang.AssertionError: Client Execution was expected to fail, but succeeded with error code 0 for fname=partition_column_names_with_leading_and_trailing_spaces.q 
+See ./ql/target/tmp/log/hive.log or ./itests/qtest/target/tmp/log/hive.log, or check ./ql/target/surefire-reports or ./itests/qtest/target/surefire-reports/ for specific test cases logs.
