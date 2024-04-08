@@ -235,7 +235,8 @@ public class BenchmarkTool implements Runnable {
         ACIDBenchmarks.TestOpenTxn.class.getSimpleName(),
         ACIDBenchmarks.TestLocking.class.getSimpleName(),
         ACIDBenchmarks.TestGetValidWriteIds.class.getSimpleName(),
-        ACIDBenchmarks.TestAllocateTableWriteIds.class.getSimpleName()
+        ACIDBenchmarks.TestAllocateTableWriteIds.class.getSimpleName(),
+        ACIDBenchmarks.TestReadyToCleanAborts.class.getSimpleName()
     };
 
     for (String pattern : Util.filterMatches(Arrays.asList(candidates), matches, exclude)) {

@@ -18,6 +18,7 @@
 
 package org.apache.hadoop.hive.metastore.tools;
 
+import jline.internal.Log;
 import org.apache.hadoop.hive.metastore.api.DataOperationType;
 import org.apache.hadoop.hive.metastore.api.LockComponent;
 import org.apache.hadoop.hive.metastore.api.LockRequest;
@@ -38,6 +39,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.apache.hadoop.hive.metastore.tools.BenchmarkUtils.createASingleTable;
 import static org.apache.hadoop.hive.metastore.tools.BenchmarkUtils.createManyTables;
 import static org.apache.hadoop.hive.metastore.tools.BenchmarkUtils.dropManyTables;
 import static org.apache.hadoop.hive.metastore.tools.Util.throwingSupplierWrapper;
@@ -221,6 +223,7 @@ public class ACIDBenchmarks {
 
   @State(Scope.Benchmark)
   public static class TestGetValidWriteIds extends CoreContext {
+
     String dbName = "test_db";
     String tblName = "table_%d";
     List<String> fullTableNames = new ArrayList<>();
@@ -228,6 +231,12 @@ public class ACIDBenchmarks {
 
     @Setup
     public void doSetup() {
+      try {
+        client = HMSConfig.getInstance().newClient();
+      } catch (Exception e) {
+        LOG.error(e.getMessage());
+      }
+
       try {
         client = HMSConfig.getInstance().newClient();
       } catch (Exception e) {
@@ -259,6 +268,70 @@ public class ACIDBenchmarks {
     public void getValidWriteIds(TestGetValidWriteIds.ThreadState state) throws TException {
       LOG.debug("executing getValidWriteIds");
       state.client.getValidWriteIds(this.fullTableNames);
+    }
+  }
+
+  @State(Scope.Benchmark)
+  public static class TestReadyToCleanAborts extends CoreContext {
+    /*
+      Steps to test:
+
+        create a table with a partition
+        create a lock component on a partition (SHARED_WRITE
+        create a lock state should be acquired
+        abort the txn
+        n times:
+          create a lock component on a partition (SHARED_WRITE
+          create a lock state should be acquired
+        create a compaction request
+        txnHandler.findNextToCompact
+        updateCompactorState to a larger one
+        findReadyToCleanAborts
+
+     */
+    String dbName = "test_db";
+    String tblName = "table_%d";
+    List<String> fullTableNames = new ArrayList<>();
+    HMSClient client;
+
+    @Setup
+    public void doSetup() {
+      try {
+        client = HMSConfig.getInstance().newClient();
+      } catch (Exception e) {
+        LOG.error(e.getMessage());
+      }
+
+      try {
+        if (!client.dbExists(dbName)) {
+          client.createDatabase(dbName);
+        }
+      } catch (TException e) {
+        LOG.error(e.getMessage());
+      }
+
+      LOG.info("creating table {}", tblName);
+      createASingleTable(client, dbName, tblName);
+      fullTableNames.add(dbName + "." + tblName);
+
+      Log.info("### - setup");
+    }
+
+    @TearDown
+    public void doTearDown() throws Exception {
+      LOG.debug("dropping table {}", tblName);
+      throwingSupplierWrapper(() -> client.dropTable(dbName, tblName));
+
+      Log.info("### - teardown");
+    }
+
+    @Benchmark
+    public void getValidWriteIds(TestGetValidWriteIds.ThreadState state) throws TException {
+//      LOG.debug("executing getValidWriteIds");
+//      state.client.getValidWriteIds(this.fullTableNames);
+//
+
+      Log.info("### - test");
     }
   }
 }

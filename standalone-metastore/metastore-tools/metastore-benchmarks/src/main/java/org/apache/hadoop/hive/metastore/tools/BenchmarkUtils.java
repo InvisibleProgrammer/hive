@@ -50,6 +50,17 @@ public class BenchmarkUtils {
                     .build())));
   }
 
+  static void createASingleTable(HMSClient client,String dbName, String tblName) {
+    List<FieldSchema> columns = createSchema(Arrays.asList("name", "string"));
+    List<FieldSchema> partitions = createSchema(Arrays.asList("date", "string"));
+    throwingSupplierWrapper(() -> client.createTable(
+                            new Util.TableBuilder(dbName, tblName)
+                                    .withType(TableType.MANAGED_TABLE)
+                                    .withColumns(columns)
+                                    .withPartitionKeys(partitions)
+                                    .build()));
+  }
+
   static void dropManyTables(HMSClient client, int howMany, String dbName, String format) {
     IntStream.range(0, howMany)
         .forEach(i ->
