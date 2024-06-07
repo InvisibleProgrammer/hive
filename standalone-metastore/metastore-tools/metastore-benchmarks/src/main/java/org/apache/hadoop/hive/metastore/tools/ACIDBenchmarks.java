@@ -18,10 +18,22 @@
 
 package org.apache.hadoop.hive.metastore.tools;
 
+import edu.emory.mathcs.backport.java.util.Arrays;
 import jline.internal.Log;
+import org.apache.hadoop.hive.metastore.api.AbortTxnRequest;
 import org.apache.hadoop.hive.metastore.api.DataOperationType;
 import org.apache.hadoop.hive.metastore.api.LockComponent;
+import org.apache.hadoop.hive.metastore.api.LockLevel;
 import org.apache.hadoop.hive.metastore.api.LockRequest;
+import org.apache.hadoop.hive.metastore.api.LockResponse;
+import org.apache.hadoop.hive.metastore.api.LockState;
+import org.apache.hadoop.hive.metastore.api.LockType;
+import org.apache.hadoop.hive.metastore.api.MetaException;
+import org.apache.hadoop.hive.metastore.api.NoSuchTxnException;
+import org.apache.hadoop.hive.metastore.api.TxnAbortedException;
+import org.apache.hadoop.hive.metastore.txn.CompactionTxnHandler;
+import org.apache.hadoop.hive.metastore.txn.TxnStore;
+import org.apache.hadoop.hive.metastore.txn.TxnUtils;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LoggerContext;
@@ -276,7 +288,8 @@ public class ACIDBenchmarks {
     /*
       Steps to test:
 
-        create a table with a partition
+        +
+        +
         create a lock component on a partition (SHARED_WRITE
         create a lock state should be acquired
         abort the txn
@@ -290,31 +303,73 @@ public class ACIDBenchmarks {
 
      */
     String dbName = "test_db";
-    String tblName = "table_%d";
-    List<String> fullTableNames = new ArrayList<>();
+    String tblName = "table_ready_to_clean_aborts";
     HMSClient client;
+    LockComponent lockComponent;
+    List<Long> txnIds;
 
     @Setup
     public void doSetup() {
-      try {
-        client = HMSConfig.getInstance().newClient();
-      } catch (Exception e) {
-        LOG.error(e.getMessage());
-      }
+      client = throwingSupplierWrapper(() -> HMSConfig.getInstance().newClient());
+      client.getHadoopConf().set("metastore.compactor.fetch.size", "1");
 
-      try {
-        if (!client.dbExists(dbName)) {
-          client.createDatabase(dbName);
-        }
-      } catch (TException e) {
-        LOG.error(e.getMessage());
+      // create a database
+      if (!throwingSupplierWrapper(() -> client.dbExists(dbName))) {
+        throwingSupplierWrapper(() -> client.createDatabase(dbName));
       }
+//
+//      txnIds = throwingSupplierWrapper(() -> client.openTxn(1));
+//
+//
+//
+////       create a table with a partition
+//      LOG.info("creating table {}", tblName);
+//      createASingleTable(client, dbName, tblName);
+//
+//      List<LockComponent> components = new ArrayList<>();
+//      components.add(createLockComponent(LockType.SHARED_WRITE, LockLevel.DB, "mydb", "mytable", "mypartition=myvalue", DataOperationType.UPDATE));
+//      components.add(createLockComponent(LockType.SHARED_WRITE, LockLevel.DB, "mydb", "yourtable", "mypartition=myvalue", DataOperationType.UPDATE));
+//
+//      LockRequest req = new LockRequest(components, "me", "localhost");
+//      req.setTxnid(txnIds.get(0));
+//      LockResponse res = throwingSupplierWrapper(() -> client.lock(req));
+//
+//      throwingSupplierWrapper(() -> client.abortTxns(txnIds));
 
-      LOG.info("creating table {}", tblName);
-      createASingleTable(client, dbName, tblName);
-      fullTableNames.add(dbName + "." + tblName);
+//
+//      // create a lock component on a partition (SHARED_WRITE)
+//      lockComponent = new Util.LockComponentBuilder()
+//              .setDbName(dbName)
+//              .setSemiShared()
+//              .setTableName(tblName)
+//              .setPartitionName("date=2008-01-01")
+//              .setOperationType(DataOperationType.UPDATE)
+//              .build();
+//
+//      // acquire a txn
+//
+//
+//      List<LockComponent> lockComponents = new ArrayList<>();
+//      lockComponents.add(lockComponent);
+//      LockRequest req = new LockRequest(lockComponents, "me", "localhost");
+//      req.setTxnid(txnIds.get(0));
+//
+//      throwingSupplierWrapper(() -> client.lock(req));
+//      throwingSupplierWrapper(() -> client.abortTxns(txnIds));
+
+
+
 
       Log.info("### - setup");
+    }
+
+    private LockComponent createLockComponent(LockType lockType, LockLevel lockLevel, String dbName, String tableName, String partitionName, DataOperationType dataOperationType){
+      LockComponent lockComponent = new LockComponent(lockType, lockLevel, dbName);
+      lockComponent.setTablename(tableName);
+      lockComponent.setPartitionname(partitionName);
+      lockComponent.setOperationType(dataOperationType);
+
+      return lockComponent;
     }
 
     @TearDown
@@ -326,13 +381,17 @@ public class ACIDBenchmarks {
     }
 
     @Benchmark
-    public void getValidWriteIds(TestGetValidWriteIds.ThreadState state) throws TException {
+    public void testReadyToCleanAborts(TestGetValidWriteIds.ThreadState state) throws TException {
 //      LOG.debug("executing getValidWriteIds");
 //      state.client.getValidWriteIds(this.fullTableNames);
 //
+      CompactionTxnHandler compactionTxnHandler = new CompactionTxnHandler();
+      compactionTxnHandler.setConf(client.getHadoopConf());
+      compactionTxnHandler.findReadyToCleanAborts(1, 1);
 
       Log.info("### - test");
     }
+
   }
 }
 

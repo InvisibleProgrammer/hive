@@ -66,7 +66,7 @@ import static org.apache.hadoop.hive.metastore.txn.TxnUtils.thriftCompactionType
  * Extends the transaction handler with methods needed only by the compactor threads.  These
  * methods are not available through the thrift interface.
  */
-class CompactionTxnHandler extends TxnHandler {
+public class CompactionTxnHandler extends TxnHandler {
   
   private static final Logger LOG = LoggerFactory.getLogger(CompactionTxnHandler.class.getName());
 
