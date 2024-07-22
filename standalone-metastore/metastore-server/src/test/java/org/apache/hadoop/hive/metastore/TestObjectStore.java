@@ -62,6 +62,7 @@ import org.apache.hadoop.hive.metastore.api.SQLPrimaryKey;
 import org.apache.hadoop.hive.metastore.api.SerDeInfo;
 import org.apache.hadoop.hive.metastore.api.StorageDescriptor;
 import org.apache.hadoop.hive.metastore.api.StoredProcedure;
+import org.apache.hadoop.hive.metastore.api.StringColumnStatsData;
 import org.apache.hadoop.hive.metastore.api.Table;
 import org.apache.hadoop.hive.metastore.client.builder.CatalogBuilder;
 import org.apache.hadoop.hive.metastore.client.builder.DatabaseBuilder;
@@ -74,6 +75,7 @@ import org.apache.hadoop.hive.metastore.client.builder.TableBuilder;
 import org.apache.hadoop.hive.metastore.columnstats.ColStatsBuilder;
 import org.apache.hadoop.hive.metastore.conf.MetastoreConf;
 import org.apache.hadoop.hive.metastore.conf.MetastoreConf.ConfVars;
+import org.apache.hadoop.hive.metastore.grpc.HiveMetastore;
 import org.apache.hadoop.hive.metastore.messaging.EventMessage;
 import org.apache.hadoop.hive.metastore.metrics.Metrics;
 import org.apache.hadoop.hive.metastore.metrics.MetricsConstants;
@@ -123,6 +125,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static java.util.concurrent.Executors.newFixedThreadPool;
 import static org.apache.hadoop.hive.metastore.StatisticsTestUtils.assertEqualStatistics;
+import static org.apache.hadoop.hive.metastore.TestHiveMetaStore.client;
 import static org.apache.hadoop.hive.metastore.TestHiveMetaStore.createSourceTable;
 import static org.apache.hadoop.hive.metastore.Warehouse.DEFAULT_CATALOG_NAME;
 import static org.hamcrest.CoreMatchers.hasItems;
@@ -1785,6 +1788,49 @@ public class TestObjectStore {
       Assert.assertEquals(true, runDirectSql.get());
       Assert.assertEquals(false, runJdo.get());
     }
+  }
+
+  @Test
+  public void testParallelExecutionOfUpdatePartitionColumnStatistics() throws Exception {
+    List<ColumnStatistics> tabColStats;
+
+    ColumnStatisticsData colStatData = new ColumnStatisticsData();
+    colStatData.setStringStats(new StringColumnStatsData(3, 3.0, 0, 1));
+    ColumnStatisticsObj colStatsObj = new ColumnStatisticsObj("col1", "string", colStatData);
+    List<ColumnStatisticsObj> colStatsObjs = Arrays.asList(colStatsObj);
+    ColumnStatisticsDesc colStatsDesc = new ColumnStatisticsDesc(true, "test", "foo");
+    ColumnStatistics colStats = new ColumnStatistics(colStatsDesc, colStatsObjs);
+    colStats.setEngine("hive");
+
+    objectStore.updateTableColumnStatistics(colStats, null, 0L);
+
+    try (AutoCloseable c = deadline()){
+      tabColStats = objectStore.getTableColumnStatistics(DEFAULT_CATALOG_NAME, "test", "foo", Arrays.asList("col1"));
+    }
+
+    Assert.assertEquals(1, tabColStats.size());
+
+//    try (AutoCloseable c = deadline()) {
+//      tabColStats = objectStore.getTableColumnStatistics(DEFAULT_CATALOG_NAME, DB1, TABLE1,
+//              Arrays.asList("test_col1", "test_col2"));
+//    }
+//    Assert.assertEquals(1, tabColStats.size());
+//    Assert.assertEquals(2, tabColStats.get(0).getStatsObjSize());
+//
+//    objectStore.deleteTableColumnStatistics(DEFAULT_CATALOG_NAME, DB1, TABLE1, "test_col1", ENGINE);
+//    try (AutoCloseable c = deadline()) {
+//      tabColStats = objectStore.getTableColumnStatistics(DEFAULT_CATALOG_NAME, DB1, TABLE1,
+//              Arrays.asList("test_col1", "test_col2"));
+//    }
+//    Assert.assertEquals(1, tabColStats.size());
+//    Assert.assertEquals(1, tabColStats.get(0).getStatsObjSize());
+//
+//    objectStore.deleteTableColumnStatistics(DEFAULT_CATALOG_NAME, DB1, TABLE1, "test_col2", ENGINE);
+//    try (AutoCloseable c = deadline()) {
+//      tabColStats = objectStore.getTableColumnStatistics(DEFAULT_CATALOG_NAME, DB1, TABLE1,
+//              Arrays.asList("test_col1", "test_col2"));
+//    }
+//    Assert.assertEquals(0, tabColStats.size());
   }
 
   /**
