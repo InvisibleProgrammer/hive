@@ -134,6 +134,7 @@ import org.apache.iceberg.types.Type;
 import org.apache.iceberg.types.Types;
 import org.apache.iceberg.util.Pair;
 import org.apache.iceberg.util.StructProjection;
+import org.apache.iceberg.view.View;
 import org.apache.thrift.TException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -187,6 +188,16 @@ public class HiveIcebergMetaHook extends BaseHiveIcebergMetaHook {
       Table table;
       if (metadataLocation != null) {
         table = Catalogs.registerTable(conf, catalogProperties, metadataLocation);
+      } else if ("MATERIALIZED_VIEW".equals(hmsTable.getTableType())) {
+        View mv = Catalogs.createMaterializedView(conf, catalogProperties);
+
+        String tableIdentifier = catalogProperties.getProperty(Catalogs.NAME);
+        SessionStateUtil.addResource(conf, InputFormatConfig.CTAS_TABLE_NAME, tableIdentifier);
+        SessionStateUtil.addResource(conf, tableIdentifier, mv);
+
+        // TODO
+//        HiveTableUtil.createFileForTableObject(mv, conf);
+        return;
       } else {
         table = Catalogs.createTable(conf, catalogProperties);
       }
