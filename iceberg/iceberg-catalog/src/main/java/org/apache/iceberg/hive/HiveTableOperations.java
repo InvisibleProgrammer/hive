@@ -104,7 +104,7 @@ public class HiveTableOperations extends BaseMetastoreTableOperations
     String metadataLocation = null;
     try {
       Table table = metaClients.run(client -> client.getTable(database, tableName));
-      HiveOperationsBase.validateTableIsIceberg(table, fullName);
+      HiveOperationsBase.validateTableOrMVIsIceberg(table, fullName);
 
       metadataLocation = table.getParameters().get(METADATA_LOCATION_PROP);
 
