@@ -1,0 +1,26 @@
+PREHOOK: query: create table source_tbl2(col_001 int, col_002 int, col_003 int, p1 int)
+PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
+PREHOOK: Output: default@source_tbl2
+POSTHOOK: query: create table source_tbl2(col_001 int, col_002 int, col_003 int, p1 int)
+POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
+POSTHOOK: Output: default@source_tbl2
+PREHOOK: query: create view b_v_4 as
+select *
+from (select col_001, row_number() over (partition by src.p1) as r_num
+        from source_tbl2 src) v1
+PREHOOK: type: CREATEVIEW
+PREHOOK: Input: default@source_tbl2
+PREHOOK: Output: database:default
+PREHOOK: Output: default@b_v_4
+POSTHOOK: query: create view b_v_4 as
+select *
+from (select col_001, row_number() over (partition by src.p1) as r_num
+        from source_tbl2 src) v1
+POSTHOOK: type: CREATEVIEW
+POSTHOOK: Input: default@source_tbl2
+POSTHOOK: Output: database:default
+POSTHOOK: Output: default@b_v_4
+POSTHOOK: Lineage: b_v_4.col_001 SIMPLE [(source_tbl2)src.FieldSchema(name:col_001, type:int, comment:null), ]
+POSTHOOK: Lineage: b_v_4.r_num SCRIPT [(source_tbl2)src.FieldSchema(name:col_001, type:int, comment:null), (source_tbl2)src.FieldSchema(name:col_002, type:int, comment:null), (source_tbl2)src.FieldSchema(name:col_003, type:int, comment:null), (source_tbl2)src.FieldSchema(name:p1, type:int, comment:null), ]

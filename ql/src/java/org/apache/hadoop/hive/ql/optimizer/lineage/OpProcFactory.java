@@ -38,6 +38,7 @@ import org.apache.hadoop.hive.ql.exec.JoinOperator;
 import org.apache.hadoop.hive.ql.exec.LateralViewJoinOperator;
 import org.apache.hadoop.hive.ql.exec.LimitOperator;
 import org.apache.hadoop.hive.ql.exec.Operator;
+import org.apache.hadoop.hive.ql.exec.PTFOperator;
 import org.apache.hadoop.hive.ql.exec.ReduceSinkOperator;
 import org.apache.hadoop.hive.ql.exec.RowSchema;
 import org.apache.hadoop.hive.ql.exec.ScriptOperator;
@@ -677,6 +678,62 @@ public class OpProcFactory {
   }
 
   /**
+   * PTF processor
+   */
+  public static class PTFLineage implements SemanticNodeProcessor {
+
+    @Override
+    public Object process(Node nd, Stack<Node> stack, NodeProcessorCtx procCtx, Object... nodeOutputs) throws SemanticException {
+      // LineageCTx
+      LineageCtx lCtx = (LineageCtx) procCtx;
+
+      // The operators
+      @SuppressWarnings("unchecked")
+      PTFOperator op = (PTFOperator)nd;
+      Operator<? extends OperatorDesc> inpOp = getParent(stack);
+      lCtx.getIndex().copyPredicates(inpOp, op);
+
+      // Create a single dependency list by concatenating the dependencies of all
+      // the cols
+      Dependency dep = new Dependency();
+      DependencyType new_type = DependencyType.SCRIPT;
+      dep.setType(DependencyType.SCRIPT);
+      // TODO: Fix this to a non null value.
+      dep.setExpr(null);
+
+      LinkedHashSet<BaseColumnInfo> col_set = new LinkedHashSet<BaseColumnInfo>();
+      for(ColumnInfo ci : inpOp.getSchema().getSignature()) {
+        Dependency d = lCtx.getIndex().getDependency(inpOp, ci);
+        if (d != null) {
+          new_type = LineageCtx.getNewDependencyType(d.getType(), new_type);
+          if (!ci.isHiddenVirtualCol()) {
+            col_set.addAll(d.getBaseCols());
+          }
+        }
+      }
+
+      dep.setType(new_type);
+      dep.setBaseCols(col_set);
+
+      boolean isScript = false;
+
+      // This dependency is then set for all the colinfos of the script operator
+      for(ColumnInfo ci : op.getSchema().getSignature()) {
+        Dependency d = dep;
+        if (!isScript) {
+          Dependency dep_ci = lCtx.getIndex().getDependency(inpOp, ci);
+          if (dep_ci != null) {
+            d = dep_ci;
+          }
+        }
+        lCtx.getIndex().putDependency(op, ci, d);
+      }
+
+      return null;
+    }
+  }
+
+  /**
    * Default processor. This basically passes the input dependencies as such
    * to the output dependencies.
    */
@@ -748,4 +805,6 @@ public class OpProcFactory {
   public static SemanticNodeProcessor getFilterProc() {
     return new FilterLineage();
   }
+
+  public static SemanticNodeProcessor getPTFProc() { return new PTFLineage(); }
 }
