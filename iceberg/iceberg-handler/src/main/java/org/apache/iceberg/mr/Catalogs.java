@@ -33,6 +33,7 @@ import org.apache.iceberg.SortOrder;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.catalog.ViewCatalog;
 import org.apache.iceberg.hadoop.HadoopTables;
 import org.apache.iceberg.hive.CatalogUtils;
 import org.apache.iceberg.hive.HMSTablePropertyHelper;
@@ -226,6 +227,16 @@ public final class Catalogs {
     } else {
       throw new RuntimeException("Rename from " + props.getProperty(NAME) + " to " + to + " failed");
     }
+  }
+
+  public static boolean isViewExists(Configuration conf, String viewIdentifier,
+                                     String catalogName) {
+    Optional<Catalog> catalog = loadCatalog(conf, catalogName);
+    if (catalog.isEmpty()) {
+      throw new RuntimeException("Catalog " + catalogName + " not found");
+    }
+    ViewCatalog viewCatalog = (ViewCatalog) catalog.get();
+    return viewCatalog.viewExists(TableIdentifier.parse(viewIdentifier));
   }
 
   static Optional<Catalog> loadCatalog(Configuration conf, String catalogName) {
