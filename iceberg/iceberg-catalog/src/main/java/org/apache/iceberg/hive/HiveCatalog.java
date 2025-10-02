@@ -847,6 +847,8 @@ public class HiveCatalog extends BaseMetastoreViewCatalog
    * follows checks at different levels: 1. During refresh, it validates if the view is an iceberg
    * view or not. 2. During commit, it validates if there is any concurrent commit with view or
    * view-name already exists. This class helps to do the validation on an early basis.
+   *
+   *
    */
   private class TableAwareViewBuilder extends BaseViewBuilder {
 
@@ -864,15 +866,6 @@ public class HiveCatalog extends BaseMetastoreViewCatalog
                 "Table with same name already exists: %s", identifier);
       }
       return super.createOrReplace();
-    }
-
-    @Override
-    public View create() {
-      if (tableExists(identifier)) {
-        throw new org.apache.iceberg.exceptions.AlreadyExistsException(
-                "Table with same name already exists: %s", identifier);
-      }
-      return super.create();
     }
   }
 }

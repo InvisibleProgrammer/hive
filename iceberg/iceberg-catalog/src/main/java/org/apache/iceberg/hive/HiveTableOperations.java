@@ -107,6 +107,11 @@ public class HiveTableOperations extends BaseMetastoreTableOperations
       HiveOperationsBase.validateTableIsIceberg(table, fullName);
 
       metadataLocation = table.getParameters().get(METADATA_LOCATION_PROP);
+      if (TableType.MATERIALIZED_VIEW.name().equals(table.getTableType()) &&
+              table.getViewOriginalText() == null
+      ) {
+        metadataLocation = metadataLocation + "_table";
+      }
 
     } catch (NoSuchObjectException e) {
       if (currentMetadataLocation() != null) {

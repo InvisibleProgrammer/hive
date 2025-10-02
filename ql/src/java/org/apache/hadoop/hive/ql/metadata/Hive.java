@@ -1400,8 +1400,13 @@ public class Hive implements AutoCloseable {
 
       if (isIcebergTable(tbl)) {
         EnvironmentContext envContext = new EnvironmentContext();
-        if (TableType.MANAGED_TABLE.equals(tbl.getTableType())) {
+        TableType tableType = tbl.getTableType();
+        if (tableType == TableType.MANAGED_TABLE || tableType == TableType.MATERIALIZED_VIEW) {
           envContext.putToProperties(CTAS_LEGACY_CONFIG, Boolean.TRUE.toString());
+        }
+        if (tableType == TableType.MATERIALIZED_VIEW
+                && "iceberg".equals(conf.getVar(ConfVars.HIVE_ICEBERG_MATERIALIZED_VIEW_METADATA_LOCATION))) {
+          envContext.putToProperties(ConfVars.HIVE_ICEBERG_MATERIALIZED_VIEW_METADATA_LOCATION.varname, Boolean.TRUE.toString());
         }
         if (isIcebergStatsSource(conf)) {
           envContext.putToProperties(StatsSetupConst.DO_NOT_UPDATE_STATS, StatsSetupConst.TRUE);

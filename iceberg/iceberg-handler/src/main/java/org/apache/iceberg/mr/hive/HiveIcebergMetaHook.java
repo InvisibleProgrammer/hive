@@ -40,6 +40,7 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.common.TableName;
 import org.apache.hadoop.hive.metastore.HiveMetaHook;
 import org.apache.hadoop.hive.metastore.PartitionDropOptions;
+import org.apache.hadoop.hive.metastore.TableType;
 import org.apache.hadoop.hive.metastore.Warehouse;
 import org.apache.hadoop.hive.metastore.api.DropPartitionsExpr;
 import org.apache.hadoop.hive.metastore.api.EnvironmentContext;
@@ -180,6 +181,7 @@ public class HiveIcebergMetaHook extends BaseHiveIcebergMetaHook {
   @Override
   public void commitCreateTable(org.apache.hadoop.hive.metastore.api.Table hmsTable) {
     if (icebergTable == null) {
+      TableType tableType = Enum.valueOf(TableType.class, hmsTable.getTableType());
 
       setFileFormat(catalogProperties.getProperty(TableProperties.DEFAULT_FILE_FORMAT));
 
@@ -187,6 +189,16 @@ public class HiveIcebergMetaHook extends BaseHiveIcebergMetaHook {
       Table table;
       if (metadataLocation != null) {
         table = Catalogs.registerTable(conf, catalogProperties, metadataLocation);
+      } else if (tableType == TableType.MATERIALIZED_VIEW) {
+        hmsTable.setViewOriginalText(hmsTable.getParameters().get("view.original.text"));
+        hmsTable.setViewExpandedText(hmsTable.getParameters().get("view.expanded.text"));
+
+        var materializedView = Catalogs.createMaterializedView(
+                conf,
+                catalogProperties,
+                hmsTable.getParameters().get("view.original.text"),
+                hmsTable.getParameters().get("view.expanded.text"));
+        table = materializedView.getTable();
       } else {
         table = Catalogs.createTable(conf, catalogProperties);
       }
@@ -195,7 +207,7 @@ public class HiveIcebergMetaHook extends BaseHiveIcebergMetaHook {
         return;
       }
 
-      // set this in the query state so that we can rollback the table in the lifecycle hook in case of failures
+      // set this in the query state so that we can roll back the table in the lifecycle hook in case of failures
       String tableIdentifier = catalogProperties.getProperty(Catalogs.NAME);
       SessionStateUtil.addResource(conf, InputFormatConfig.CTAS_TABLE_NAME, tableIdentifier);
       SessionStateUtil.addResource(conf, tableIdentifier, table);

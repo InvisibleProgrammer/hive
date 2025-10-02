@@ -41,6 +41,7 @@ import org.apache.hadoop.hive.common.BlobStorageUtils;
 import org.apache.hadoop.hive.common.StringInternUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
+import org.apache.hadoop.hive.metastore.TableType;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.hive_metastoreConstants;
 import org.apache.hadoop.hive.ql.CompilationOpContext;
@@ -1777,6 +1778,8 @@ public final class GenMapRedUtils {
           mergeTaskProperties.putAll(createViewDesc.getSerdeProps());
           mergeTaskProperties.put(hive_metastoreConstants.META_TABLE_NAME, createViewDesc.getViewName());
           location = createViewDesc.getLocation();
+          location += "_table";
+          mergeTaskProperties.put("table_type", TableType.MATERIALIZED_VIEW.name());
         }
       }
       if (location != null) {

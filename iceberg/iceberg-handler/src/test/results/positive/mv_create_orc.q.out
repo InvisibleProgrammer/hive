@@ -1,0 +1,63 @@
+PREHOOK: query: drop materialized view if exists mv_create_orc
+PREHOOK: type: DROP_MATERIALIZED_VIEW
+POSTHOOK: query: drop materialized view if exists mv_create_orc
+POSTHOOK: type: DROP_MATERIALIZED_VIEW
+PREHOOK: query: drop table if exists ice_tbl_orc
+PREHOOK: type: DROPTABLE
+PREHOOK: Output: database:default
+POSTHOOK: query: drop table if exists ice_tbl_orc
+POSTHOOK: type: DROPTABLE
+POSTHOOK: Output: database:default
+PREHOOK: query: create table ice_tbl_orc (col1 int, col2 string) stored by iceberg stored as orc
+PREHOOK: type: CREATETABLE
+PREHOOK: Output: database:default
+PREHOOK: Output: default@ice_tbl_orc
+POSTHOOK: query: create table ice_tbl_orc (col1 int, col2 string) stored by iceberg stored as orc
+POSTHOOK: type: CREATETABLE
+POSTHOOK: Output: database:default
+POSTHOOK: Output: default@ice_tbl_orc
+PREHOOK: query: insert into ice_tbl_orc (col1, col2) values (1, 'Joe'), (2, 'Jack'), (3, 'Jill')
+PREHOOK: type: QUERY
+PREHOOK: Input: _dummy_database@_dummy_table
+PREHOOK: Output: default@ice_tbl_orc
+POSTHOOK: query: insert into ice_tbl_orc (col1, col2) values (1, 'Joe'), (2, 'Jack'), (3, 'Jill')
+POSTHOOK: type: QUERY
+POSTHOOK: Input: _dummy_database@_dummy_table
+POSTHOOK: Output: default@ice_tbl_orc
+PREHOOK: query: create materialized view mv_create_orc stored by iceberg stored as orc
+as
+select col1, col2 from ice_tbl_orc where col1 > 1
+PREHOOK: type: CREATE_MATERIALIZED_VIEW
+PREHOOK: Input: default@ice_tbl_orc
+PREHOOK: Output: database:default
+PREHOOK: Output: default@mv_create_orc
+PREHOOK: Output: hdfs://### HDFS PATH ###
+POSTHOOK: query: create materialized view mv_create_orc stored by iceberg stored as orc
+as
+select col1, col2 from ice_tbl_orc where col1 > 1
+POSTHOOK: type: CREATE_MATERIALIZED_VIEW
+POSTHOOK: Input: default@ice_tbl_orc
+POSTHOOK: Output: database:default
+POSTHOOK: Output: default@mv_create_orc
+POSTHOOK: Output: hdfs://### HDFS PATH ###
+POSTHOOK: Lineage: mv_create_orc.col1 SIMPLE [(ice_tbl_orc)ice_tbl_orc.FieldSchema(name:col1, type:int, comment:null), ]
+POSTHOOK: Lineage: mv_create_orc.col2 SIMPLE [(ice_tbl_orc)ice_tbl_orc.FieldSchema(name:col2, type:string, comment:null), ]
+PREHOOK: query: select * from mv_create_orc
+PREHOOK: type: QUERY
+PREHOOK: Input: default@mv_create_orc
+PREHOOK: Output: hdfs://### HDFS PATH ###
+POSTHOOK: query: select * from mv_create_orc
+POSTHOOK: type: QUERY
+POSTHOOK: Input: default@mv_create_orc
+POSTHOOK: Output: hdfs://### HDFS PATH ###
+2	Jack
+3	Jill
+PREHOOK: query: select * from default.mv_create_orc.manifests
+PREHOOK: type: QUERY
+PREHOOK: Input: default@mv_create_orc
+PREHOOK: Output: hdfs://### HDFS PATH ###
+POSTHOOK: query: select * from default.mv_create_orc.manifests
+POSTHOOK: type: QUERY
+POSTHOOK: Input: default@mv_create_orc
+POSTHOOK: Output: hdfs://### HDFS PATH ###
+0	hdfs://### HDFS PATH ###	7090	0	6833977970459091066	1	0	0	0	0	0	[]

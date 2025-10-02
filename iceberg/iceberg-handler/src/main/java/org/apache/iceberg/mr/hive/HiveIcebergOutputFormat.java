@@ -23,6 +23,7 @@ import java.util.Properties;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.metastore.TableType;
 import org.apache.hadoop.hive.metastore.api.hive_metastoreConstants;
 import org.apache.hadoop.hive.ql.exec.FileSinkOperator;
 import org.apache.hadoop.hive.ql.io.HiveOutputFormat;
@@ -34,6 +35,7 @@ import org.apache.hadoop.util.Progressable;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.data.Record;
+import org.apache.iceberg.mr.hive.materializedview.MaterializedView;
 import org.apache.iceberg.mr.hive.writer.HiveIcebergWriter;
 import org.apache.iceberg.mr.hive.writer.WriterBuilder;
 import org.apache.iceberg.mr.mapred.Container;
@@ -62,7 +64,12 @@ public class HiveIcebergOutputFormat implements OutputFormat<NullWritable, Conta
   private static HiveIcebergWriter writer(JobConf jc) {
     TaskAttemptID taskAttemptID = TezUtil.taskAttemptWrapper(jc);
     // It gets the config from the FileSinkOperator which has its own config for every target table
-    Table table = HiveTableUtil.deserializeTable(jc, jc.get(hive_metastoreConstants.META_TABLE_NAME));
+    String tableName = jc.get(hive_metastoreConstants.META_TABLE_NAME);
+    if (TableType.MATERIALIZED_VIEW.name().equalsIgnoreCase(jc.get("table_type"))) {
+      tableName += MaterializedView.MATERIALIZED_VIEW_TABLE_SUFFIX;
+    }
+
+    Table table = HiveTableUtil.deserializeTable(jc, tableName);
     setWriterLevelConfiguration(jc, table);
 
     return WriterBuilder.builderFor(table, jc::get)

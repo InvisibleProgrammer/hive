@@ -33,12 +33,16 @@ import org.apache.iceberg.SortOrder;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.catalog.TableIdentifier;
+import org.apache.iceberg.catalog.ViewCatalog;
 import org.apache.iceberg.hadoop.HadoopTables;
 import org.apache.iceberg.hive.CatalogUtils;
 import org.apache.iceberg.hive.HMSTablePropertyHelper;
+import org.apache.iceberg.hive.HiveCatalog;
+import org.apache.iceberg.mr.hive.materializedview.MaterializedView;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableSet;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
+import org.apache.iceberg.view.View;
 
 /**
  * Class for catalog resolution and accessing the common functions for {@link Catalog} API.
@@ -155,6 +159,45 @@ public final class Catalogs {
     return new HadoopTables(conf).create(schema, spec, sortOrder, map, location);
   }
 
+  public static MaterializedView createMaterializedView(
+          Configuration conf,
+          Properties props,
+          String originalText,
+          String expandedText) {
+
+    String name = props.getProperty(NAME);
+    String tableName = name + MaterializedView.MATERIALIZED_VIEW_TABLE_SUFFIX;
+
+    props.setProperty(NAME, tableName);
+    String location = props.getProperty(LOCATION);
+    props.setProperty(LOCATION, location + MaterializedView.MATERIALIZED_VIEW_TABLE_SUFFIX);
+    Table table = createTable(conf, props);
+    props.setProperty(NAME, name);
+    props.setProperty(LOCATION, location);
+
+    TableIdentifier tableIdentifier = TableIdentifier.parse(name);
+
+    Schema schema = schema(props);
+    PartitionSpec spec = spec(props, schema);
+    String catalogName = props.getProperty(InputFormatConfig.CATALOG_NAME);
+
+    Optional<Catalog> catalog = loadCatalog(conf, catalogName);
+
+    HiveCatalog viewCatalog = (HiveCatalog) catalog
+            .orElseThrow(() -> new IllegalStateException("Unable to load catalog: " + catalogName));
+
+    // Removed: checking table existence in HMS
+    View view = viewCatalog.buildView(tableIdentifier)
+            .withLocation(location)
+            .withProperties(filterIcebergTableProperties(props))
+            .withQuery("hive", expandedText)
+            .withSchema(schema)
+            .withDefaultNamespace(tableIdentifier.namespace())
+            .create();
+
+    return new MaterializedView(table, null);
+  }
+
   /**
    * Drops an Iceberg table using the catalog specified by the configuration.
    * <p>
@@ -226,6 +269,16 @@ public final class Catalogs {
     } else {
       throw new RuntimeException("Rename from " + props.getProperty(NAME) + " to " + to + " failed");
     }
+  }
+
+  public static boolean isViewExists(Configuration conf, String viewIdentifier,
+                                     String catalogName) {
+    Optional<Catalog> catalog = loadCatalog(conf, catalogName);
+    if (catalog.isEmpty()) {
+      throw new RuntimeException("Catalog " + catalogName + " not found");
+    }
+    ViewCatalog viewCatalog = (ViewCatalog) catalog.get();
+    return viewCatalog.viewExists(TableIdentifier.parse(viewIdentifier));
   }
 
   static Optional<Catalog> loadCatalog(Configuration conf, String catalogName) {

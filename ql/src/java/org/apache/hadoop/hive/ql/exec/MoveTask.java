@@ -31,6 +31,7 @@ import org.apache.hadoop.hive.common.BlobStorageUtils;
 import org.apache.hadoop.hive.common.FileUtils;
 import org.apache.hadoop.hive.common.HiveStatsUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.metastore.TableType;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.InvalidOperationException;
 import org.apache.hadoop.hive.metastore.api.Order;
@@ -1146,6 +1147,7 @@ public class MoveTask extends Task<MoveWork> implements Serializable {
           commitProperties = new Properties();
           commitProperties.put(hive_metastoreConstants.META_TABLE_NAME, createViewDesc.getViewName());
           location = createViewDesc.getLocation();
+          commitProperties.put("table_type", TableType.MATERIALIZED_VIEW.name());
         }
       }
       if (location != null) {
