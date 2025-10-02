@@ -34,6 +34,7 @@ import java.util.stream.Stream;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.metastore.HiveMetaHook;
+import org.apache.hadoop.hive.metastore.TableType;
 import org.apache.hadoop.hive.metastore.api.CreateTableRequest;
 import org.apache.hadoop.hive.metastore.api.EnvironmentContext;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
@@ -62,6 +63,7 @@ import org.apache.iceberg.exceptions.NoSuchTableException;
 import org.apache.iceberg.exceptions.NotFoundException;
 import org.apache.iceberg.hive.CatalogUtils;
 import org.apache.iceberg.hive.HMSTablePropertyHelper;
+import org.apache.iceberg.hive.HiveOperationsBase;
 import org.apache.iceberg.hive.HiveSchemaUtil;
 import org.apache.iceberg.mr.Catalogs;
 import org.apache.iceberg.mr.InputFormatConfig;
@@ -85,7 +87,8 @@ public class BaseHiveIcebergMetaHook implements HiveMetaHook {
   private static final Logger LOG = LoggerFactory.getLogger(BaseHiveIcebergMetaHook.class);
   private static final ObjectMapper JSON_OBJECT_MAPPER = new ObjectMapper();
   public static final Map<String, String> COMMON_HMS_PROPERTIES = ImmutableMap.of(
-      BaseMetastoreTableOperations.TABLE_TYPE_PROP, BaseMetastoreTableOperations.ICEBERG_TABLE_TYPE_VALUE.toUpperCase()
+      BaseMetastoreTableOperations.TABLE_TYPE_PROP,
+      BaseMetastoreTableOperations.ICEBERG_TABLE_TYPE_VALUE.toUpperCase()
   );
   private static final Set<String> PARAMETERS_TO_REMOVE = ImmutableSet
       .of(InputFormatConfig.TABLE_SCHEMA, Catalogs.LOCATION, Catalogs.NAME, InputFormatConfig.PARTITION_SPEC);
@@ -130,8 +133,7 @@ public class BaseHiveIcebergMetaHook implements HiveMetaHook {
     this.catalogProperties = CatalogUtils.getCatalogProperties(hmsTable);
 
     // Set the table type even for non HiveCatalog based tables
-    hmsTable.getParameters().put(BaseMetastoreTableOperations.TABLE_TYPE_PROP,
-        BaseMetastoreTableOperations.ICEBERG_TABLE_TYPE_VALUE.toUpperCase());
+    addIcebergTypeParameters(hmsTable);
 
     if (!Catalogs.hiveCatalog(conf, catalogProperties)) {
       if (Boolean.parseBoolean(this.catalogProperties.getProperty(hive_metastoreConstants.TABLE_IS_CTLT))) {
@@ -150,6 +152,7 @@ public class BaseHiveIcebergMetaHook implements HiveMetaHook {
                 hmsTable.getSd().getLocation() == null) {
           hmsTable.getSd().setLocation(icebergTable.location());
         }
+
         Preconditions.checkArgument(catalogProperties.getProperty(InputFormatConfig.TABLE_SCHEMA) == null,
             "Iceberg table already created - can not use provided schema");
         Preconditions.checkArgument(catalogProperties.getProperty(InputFormatConfig.PARTITION_SPEC) == null,
@@ -202,6 +205,38 @@ public class BaseHiveIcebergMetaHook implements HiveMetaHook {
     // Remove hive primary key columns from table request, as iceberg doesn't support hive primary key.
     request.setPrimaryKeys(null);
     setSortOrder(hmsTable, schema, catalogProperties);
+  }
+
+  private static void addIcebergTypeParameters(org.apache.hadoop.hive.metastore.api.Table hmsTable) {
+    TableType tableType = Enum.valueOf(TableType.class, hmsTable.getTableType());
+
+    switch (tableType) {
+      case MANAGED_TABLE:
+      case EXTERNAL_TABLE:
+        hmsTable.putToParameters(
+                BaseMetastoreTableOperations.TABLE_TYPE_PROP,
+                BaseMetastoreTableOperations.ICEBERG_TABLE_TYPE_VALUE.toUpperCase());
+        break;
+      case VIRTUAL_VIEW:
+      case MATERIALIZED_VIEW:
+        hmsTable.putToParameters(
+                BaseMetastoreTableOperations.TABLE_TYPE_PROP,
+                HiveOperationsBase.ICEBERG_VIEW_TYPE_VALUE.toUpperCase()
+        );
+        break;
+      default:
+        throw new UnsupportedOperationException("The database object type " + hmsTable.getTableType() +
+                " is not supported as an Iceberg object type");
+    }
+
+    if (tableType.equals(TableType.MATERIALIZED_VIEW)) {
+      hmsTable.putToParameters("view.original.text", hmsTable.getViewOriginalText());
+      hmsTable.putToParameters("view.expanded.text", hmsTable.getViewExpandedText());
+
+      hmsTable.setViewOriginalText(null);
+      hmsTable.setViewExpandedText(null);
+    }
+
   }
 
   /**

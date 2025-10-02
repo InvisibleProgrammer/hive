@@ -283,12 +283,18 @@ public class Table implements Serializable {
       }
     }
 
-    if (isView() || isMaterializedView()) {
-      assert (getViewOriginalText() != null);
-      assert (getViewExpandedText() != null);
-    } else {
-      assert(getViewOriginalText() == null);
-      assert(getViewExpandedText() == null);
+    if (!(DDLUtils.isIcebergTable(this) && isMaterializedView() &&
+        "iceberg".equals(HiveConf.getVar(conf, ConfVars.HIVE_ICEBERG_MATERIALIZED_VIEW_METADATA_LOCATION)))) {
+      // skip the validator as we have different type of objects on HMS and Iceberg Catalog side
+//      assert (getViewOriginalText() == null);
+//      assert (getViewExpandedText() == null);
+      if (isView() || isMaterializedView()) {
+        assert (getViewOriginalText() != null);
+        assert (getViewExpandedText() != null);
+      } else {
+        assert(getViewOriginalText() == null);
+        assert(getViewExpandedText() == null);
+      }
     }
   }
 

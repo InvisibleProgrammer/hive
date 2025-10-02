@@ -100,10 +100,17 @@ public interface HiveOperationsBase {
   }
 
   static void validateTableIsIceberg(Table table, String fullName) {
-    String tableType = table.getParameters().get(BaseMetastoreTableOperations.TABLE_TYPE_PROP);
+    String tableTypeProp = table.getParameters().get(BaseMetastoreTableOperations.TABLE_TYPE_PROP);
+    if (tableTypeProp == null) {
+      return;
+    }
+
+    String tableType = table.getParameters().get(BaseMetastoreTableOperations.TABLE_TYPE_PROP).toLowerCase();
+
     NoSuchIcebergTableException.check(
-        tableType != null && tableType.equalsIgnoreCase(BaseMetastoreTableOperations.ICEBERG_TABLE_TYPE_VALUE),
-        "Not an iceberg table: %s (type=%s)", fullName, tableType);
+        tableType.equals(BaseMetastoreTableOperations.ICEBERG_TABLE_TYPE_VALUE) ||
+        tableType.equals(HiveOperationsBase.ICEBERG_VIEW_TYPE_VALUE),
+            "Not an iceberg table: %s (type=%s)", fullName, tableType);
   }
 
   static void validateTableIsIcebergView(Table table, String fullName) {
