@@ -64,6 +64,12 @@
   <module name="Header">
     <property name="headerFile" value="${config_loc}/asf.header"/>
   </module>
+  <module name="RegexpHeader">
+    <property name="severity" value="error"/>
+    <property name="headerFile" value="${config_loc}/asf.header.incremental"/>
+    <property name="fileExtensions" value="java"/>
+    <property name="multiLines" value="2"/>
+  </module>
 
   <!-- Maximum file line length -->
   <module name="FileLength">
