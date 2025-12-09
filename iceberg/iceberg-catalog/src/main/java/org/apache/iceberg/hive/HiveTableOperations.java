@@ -204,6 +204,8 @@ public class HiveTableOperations extends BaseMetastoreTableOperations
           persistTable(
                   tbl, updateHiveTable, hiveLockEnabled(base, conf) ? null : baseMetadataLocation);
           lock.ensureActive();
+        } else {
+          this.refreshFromMetadataLocation(newMetadataLocation, metadataRefreshMaxRetries);
         }
 
         commitStatus = BaseMetastoreOperations.CommitStatus.SUCCESS;

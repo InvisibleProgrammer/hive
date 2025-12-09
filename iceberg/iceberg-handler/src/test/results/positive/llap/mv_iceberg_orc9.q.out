@@ -67,7 +67,7 @@ TBLPROPERTIES (
 #### A masked pattern was here ####
   'table_type'='ICEBERG-VIEW', 
 #### A masked pattern was here ####
-  'uuid'='162706c2-74b6-4da8-8341-bffde4f5e72d')
+  'uuid'='64a8a7c6-404f-4ec9-8681-aacde41c2bba')
 PREHOOK: query: describe formatted mat1
 PREHOOK: type: DESCTABLE
 PREHOOK: Input: default@mat1
@@ -96,7 +96,7 @@ Table Parameters:
 	storage_handler     	org.apache.iceberg.mr.hive.HiveIcebergStorageHandler
 	table_type          	ICEBERG-VIEW        
 #### A masked pattern was here ####
-	uuid                	162706c2-74b6-4da8-8341-bffde4f5e72d
+	uuid                	64a8a7c6-404f-4ec9-8681-aacde41c2bba
 	 	 
 # Storage Information	 	 
 SerDe Library:      	org.apache.iceberg.mr.hive.HiveIcebergSerDe	 
@@ -113,7 +113,7 @@ Outdated for Rewriting:	No
 	 	 
 # Materialized View Source table information	 	 
 Table name          	Snapshot            	 
-default.tbl_ice     	SnapshotContext{snapshotId=4422927266456928718}	 
+default.tbl_ice     	SnapshotContext{snapshotId=4188995879489803367}	 
 PREHOOK: query: select * from mat1
 PREHOOK: type: QUERY
 PREHOOK: Input: default@mat1
@@ -124,6 +124,21 @@ POSTHOOK: Input: default@mat1
 #### A masked pattern was here ####
 five	54
 four	53
+PREHOOK: query: show tables
+PREHOOK: type: SHOWTABLES
+PREHOOK: Input: database:default
+POSTHOOK: query: show tables
+POSTHOOK: type: SHOWTABLES
+POSTHOOK: Input: database:default
+mat1
+mat1_storage_table
+tbl_ice
+PREHOOK: query: show materialized views
+PREHOOK: type: SHOWMATERIALIZEDVIEWS
+POSTHOOK: query: show materialized views
+POSTHOOK: type: SHOWMATERIALIZEDVIEWS
+# MV Name           	Rewriting Enabled   	Mode                	Incremental rebuild 
+mat1                	Yes                 	Manual refresh      	Available for insert operations only
 PREHOOK: query: select 1
 PREHOOK: type: QUERY
 PREHOOK: Input: _dummy_database@_dummy_table

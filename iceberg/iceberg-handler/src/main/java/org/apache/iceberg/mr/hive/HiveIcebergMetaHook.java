@@ -207,7 +207,15 @@ public class HiveIcebergMetaHook extends BaseHiveIcebergMetaHook {
         SessionStateUtil.addResource(conf, InputFormatConfig.CTAS_TABLE_NAME, tableIdentifier);
         SessionStateUtil.addResource(conf, tableIdentifier, mv);
 
-        HiveTableUtil.createFileForTableObject(mv.getStotageTable(), conf);
+        catalogProperties.put(
+                Catalogs.NAME,
+                tableIdentifier + Catalogs.MATERIALIZED_VIEW_STORAGE_TABLE_IDENTIFIER_SUFFIX);
+        catalogProperties.put("hive.skip.store.materialized.view.table", "true");
+
+
+        Table storageTable = Catalogs.createTable(conf, catalogProperties);
+
+        HiveTableUtil.createFileForTableObject(storageTable, conf, hmsTable.getSd().getLocation());
         return;
       } else {
         table = Catalogs.createTable(conf, catalogProperties);

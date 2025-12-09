@@ -85,7 +85,7 @@ public final class Catalogs {
           "iceberg.base.snapshot.";
   public static final String MATERIALIZED_VIEW_VERSION_PROPERTY_KEY =
           "iceberg.materialized.view.version";
-  private static final String MATERIALIZED_VIEW_STORAGE_TABLE_IDENTIFIER_SUFFIX = "_storage_table";
+  public static final String MATERIALIZED_VIEW_STORAGE_TABLE_IDENTIFIER_SUFFIX = "_storage_table";
   public static final String MATERIALIZED_VIEW_ORIGINAL_TEXT = MATERIALIZED_VIEW_PROPERTY_KEY + ".original.text";
   public static final String MATERIALIZED_VIEW_EXPANDED_TEXT = MATERIALIZED_VIEW_PROPERTY_KEY + ".expanded.text";
 
@@ -313,8 +313,13 @@ public final class Catalogs {
     Map<String, String> map = filterIcebergTableProperties(props);
     map.put("hive.skip.store.materialized.view.table", "true");
     String storageTableIdentifier = name + MATERIALIZED_VIEW_STORAGE_TABLE_IDENTIFIER_SUFFIX;
-    Table storageTable = catalog.get().buildTable(TableIdentifier.parse(storageTableIdentifier), schema)
+
+    String originalCatalogType = conf.get("type");
+    conf.set("type", "hadoop");
+    Optional<Catalog> hadoopCatalog = loadCatalog(conf, catalogName);
+    Table storageTable = hadoopCatalog.get().buildTable(TableIdentifier.parse(storageTableIdentifier), schema)
             .withPartitionSpec(spec).withLocation(location).withProperties(map).withSortOrder(sortOrder).create();
+//    conf.set("type", originalCatalogType != null ? originalCatalogType : "hive");
 
     // Configuration conf, String tableIdentifier, String tableLocation,
     //                                 String catalogName
@@ -337,19 +342,19 @@ public final class Catalogs {
 
   public static class MaterializedView {
     private View view;
-    private Table stotageTable;
+    private Table storageTable;
 
     public MaterializedView(View view, Table stotageTable) {
       this.view = view;
-      this.stotageTable = stotageTable;
+      this.storageTable = stotageTable;
     }
 
     public View getView() {
       return view;
     }
 
-    public Table getStotageTable() {
-      return stotageTable;
+    public Table getStorageTable() {
+      return storageTable;
     }
   }
 
