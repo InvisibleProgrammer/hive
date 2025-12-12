@@ -1012,7 +1012,9 @@ public class Table implements Serializable {
   }
 
   public boolean isMaterializedView() {
-    return TableType.MATERIALIZED_VIEW.equals(getTableType());
+    TableType tableType = getTableType();
+    return TableType.MATERIALIZED_VIEW.equals(tableType) ||
+            TableType.EXTERNAL_MATERIALIZED_VIEW.equals(tableType);
   }
 
   /**
