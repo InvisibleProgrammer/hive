@@ -502,6 +502,7 @@ public class BaseHiveIcebergMetaHook implements HiveMetaHook {
             Catalogs.MaterializedView mv = IcebergTableUtil.getMaterializedView(conf, hmsTable, false);
             formatVersion = String.valueOf(((BaseTable) mv.getStotageTable()).operations().current().formatVersion());
 
+            hmsTable.setViewOriginalText(mv.getView().properties().get(Catalogs.MATERIALIZED_VIEW_ORIGINAL_TEXT));
             hmsTable.setViewExpandedText(mv.getView().sqlFor("hive").sql());
             break;
 
