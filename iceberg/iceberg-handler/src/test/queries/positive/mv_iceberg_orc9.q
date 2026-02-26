@@ -9,6 +9,7 @@ set hive.support.concurrency=true;
 set hive.txn.manager=org.apache.hadoop.hive.ql.lockmgr.DbTxnManager;
 set hive.iceberg.materializedview.metadata.location=iceberg;
 --set hive.server2.materializedviews.registry.impl=DUMMY;
+set hive.external.table.purge.default=true;
 
 
 drop materialized view if exists mat1;
@@ -26,6 +27,7 @@ select tbl_ice.b, tbl_ice.c from tbl_ice where tbl_ice.c > 52;
 
 select * from mat1;
 
+
 show tables;
 
 SHOW MATERIALIZED VIEWS;
@@ -34,6 +36,8 @@ show create table mat1;
 describe formatted mat1;
 
 drop materialized view mat1;
+
+select 1 as hello;
 
 create materialized view mat1_orc stored by iceberg stored as orc tblproperties ('format-version'='1', 'max-staleness-ms'='1000') as
 select tbl_ice.b, tbl_ice.c from tbl_ice where tbl_ice.c > 52;
