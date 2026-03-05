@@ -2890,6 +2890,7 @@ public class AcidUtils {
       case MATERIALIZED_VIEW:
         return !(isLocklessReads && isTransactionalTable(t));
       case EXTERNAL_TABLE:
+      case EXTERNAL_MATERIALIZED_VIEW:
         return isExternalEnabled;
       default:
         return false;
