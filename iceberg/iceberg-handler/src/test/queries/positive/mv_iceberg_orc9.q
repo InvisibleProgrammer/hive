@@ -92,11 +92,11 @@ group by tbl_ice.b, tbl_ice.c;
 delete from tbl_ice_v2 where d = 4;
 
 -- plan should be insert overwrite
--- explain cbo
+ explain cbo
 -- alter materialized view mat1_multiple_tables rebuild;
 
 -- alter materialized view mat1_multiple_tables rebuild;
 
--- select * from mat1_multiple_tables;
+select * from mat1_multiple_tables;
 
 SHOW MATERIALIZED VIEWS;
