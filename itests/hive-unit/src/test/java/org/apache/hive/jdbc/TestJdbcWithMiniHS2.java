@@ -26,6 +26,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.net.URI;
@@ -57,13 +58,19 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 
 import org.apache.commons.lang3.StringUtils;
+import org.apache.hadoop.fs.FSDataInputStream;
 import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.LocalFileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.PositionedReadable;
+import org.apache.hadoop.fs.Seekable;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
@@ -1116,6 +1123,258 @@ public class TestJdbcWithMiniHS2 {
     }
     // Restore original state
     restoreMiniHS2AndConnections();
+  }
+
+  /**
+   * Reproduces data loss when the JDBC HTTP client's socketTimeout fires while a FetchResults
+   * call is still being serviced server-side. HiveConnection's HttpRequestRetryHandler silently
+   * retries the SocketTimeoutException (when "retries" is set) by resending the identical
+   * FetchResults(orientation=NEXT) request, but HiveQueryResultSet#nextRowBatch has no way to
+   * tell whether the server already advanced its fetch cursor for the batch that was never
+   * delivered to the client. This test is expected to fail until that gap is fixed: it currently
+   * demonstrates that rows can go missing (or be duplicated/reordered) with no exception raised.
+   * @throws Exception
+   */
+  @Test
+  public void testFetchResultsDataLossOnSocketTimeoutRetry() throws Exception {
+    // Stop HiveServer2
+    stopMiniHS2();
+    HiveConf conf = getNewHiveConf();
+    // The shared test hive-site.xml sets this to "minimal", which rejects UDF/CASE-WHEN
+    // projections from FetchTask conversion and forces a full MR job instead -- defeating the
+    // point of this test, since the sleep would then run during execution, not during a
+    // FetchResults RPC. Force "more" so the query below stays a FetchTask-only plan.
+    conf.setVar(HiveConf.ConfVars.HIVE_FETCH_TASK_CONVERSION, "more");
+    startMiniHS2(conf, true);
+    String userName = System.getProperty("user.name");
+    Connection conn = getConnection(
+        miniHS2.getJdbcURL(testDbName) + ";socketTimeout=2;retries=3", userName, "password");
+    try {
+      Statement setupStmt = conn.createStatement();
+      setupStmt.execute("drop table if exists fetchresultstimeouttbl");
+      setupStmt.execute("create table fetchresultstimeouttbl (id int)");
+      setupStmt.execute("insert into fetchresultstimeouttbl values "
+          + "(1),(2),(3),(4),(5),(6),(7),(8),(9),(10),"
+          + "(11),(12),(13),(14),(15),(16),(17),(18),(19),(20)");
+      setupStmt.execute("create temporary function sleepMsUDF as '" + SleepMsUDF.class.getName() + "'");
+      setupStmt.close();
+
+      Statement stmt = conn.createStatement();
+      stmt.setFetchSize(5);
+      // Sleep for 4s (longer than the 2s socketTimeout) only while fetching the 2nd batch
+      // (rows 6-10), so the client's socket read times out mid-fetch while HS2 is still working.
+      ResultSet rs = stmt.executeQuery(
+          "select sleepMsUDF(id, case when id between 6 and 10 then 4000 else 0 end) as id "
+          + "from fetchresultstimeouttbl");
+
+      List<Integer> expectedIds = new ArrayList<Integer>();
+      for (int i = 1; i <= 20; i++) {
+        expectedIds.add(i);
+      }
+      List<Integer> actualIds = new ArrayList<Integer>();
+      try {
+        while (rs.next()) {
+          actualIds.add(rs.getInt(1));
+        }
+      } catch (SQLException e) {
+        fail("FetchResults retry after client socketTimeout raised an exception instead of "
+            + "returning the complete result set (expected " + expectedIds + ", got "
+            + actualIds + " before the exception): " + e);
+      }
+      rs.close();
+      stmt.close();
+
+      assertEquals("FetchResults retry after a client-side socketTimeout must not silently "
+          + "drop/duplicate/reorder rows", expectedIds, actualIds);
+    } finally {
+      conn.close();
+      // Restore original state
+      restoreMiniHS2AndConnections();
+    }
+  }
+
+  /**
+   * Same data-loss scenario as {@link #testFetchResultsDataLossOnSocketTimeoutRetry}, but for a
+   * GROUP BY/count(*) query, which was reported to drop rows from the result set under the same
+   * conditions. GROUP BY can never be served by a FetchTask: SimpleFetchOptimizer refuses any
+   * query containing a GROUP BY, and SimpleFetchAggregation (the only "defer aggregation to
+   * fetch time" optimizer) only applies when there are no grouping key columns. So this query is
+   * always answered by Driver#getResults() reading the already-materialized result file
+   * byte-by-byte via Utilities#readColumn -- there is no per-row UDF evaluation hook to delay at
+   * fetch time, unlike the plain-SELECT case. Instead, this test injects the delay at the
+   * FileSystem layer: DelayingLocalFileSystem (registered only on this test's own HiveConf, as
+   * "fs.file.impl") sleeps once a configured number of result rows have been read from the
+   * query's MR scratch output file, so HS2 is still mid-read when the client's socketTimeout
+   * fires.
+   * @throws Exception
+   */
+  @Test
+  public void testFetchResultsDataLossOnSocketTimeoutRetryGroupBy() throws Exception {
+    // Stop HiveServer2
+    stopMiniHS2();
+    HiveConf conf = getNewHiveConf();
+    conf.setVar(HiveConf.ConfVars.HIVE_FETCH_TASK_CONVERSION, "more");
+    // Force a single reducer so the GROUP BY output is written by exactly one reduce task, in
+    // ascending key order, making the row sequence in the result file deterministic.
+    conf.setIntVar(HiveConf.ConfVars.MAX_REDUCERS, 1);
+    // The result file defaults to a binary SequenceFile, which DelayingLocalFileSystem's
+    // newline-counting heuristic cannot parse row boundaries from. Force plain text so each
+    // result row ends with the '\n' DelayingLocalFileSystem looks for.
+    conf.setVar(HiveConf.ConfVars.HIVE_QUERY_RESULT_FILEFORMAT, "TextFile");
+    conf.setClass("fs.file.impl", DelayingLocalFileSystem.class, FileSystem.class);
+    // Must disable the FS cache: FileSystem.CACHE is JVM-global and keyed by scheme/authority, so
+    // without this a plain LocalFileSystem cached by an earlier/other test would be reused for
+    // the "file" scheme instead of our DelayingLocalFileSystem.
+    conf.setBoolean("fs.file.impl.disable.cache", true);
+    startMiniHS2(conf, true);
+    String userName = System.getProperty("user.name");
+    Connection conn = getConnection(
+        miniHS2.getJdbcURL(testDbName) + ";socketTimeout=2;retries=3", userName, "password");
+    try {
+      Statement setupStmt = conn.createStatement();
+      setupStmt.execute("drop table if exists fetchresultsgroupbytimeouttbl");
+      setupStmt.execute("create table fetchresultsgroupbytimeouttbl (id int)");
+      setupStmt.execute("insert into fetchresultsgroupbytimeouttbl values "
+          + "(1),(2),(3),(4),(5),(6),(7),(8),(9),(10),"
+          + "(11),(12),(13),(14),(15),(16),(17),(18),(19),(20)");
+      setupStmt.close();
+
+      Statement stmt = conn.createStatement();
+      stmt.setFetchSize(5);
+      // Sleep for 4s (longer than the 2s socketTimeout) once the 8th result row has been read
+      // from the result file -- i.e. mid-way through the 2nd FetchResults batch (rows 6-10) --
+      // so the client's socket read times out while HS2 is still streaming that batch.
+      // Stays armed through the fetch loop below: executeQuery() only compiles+runs the MR job
+      // (no result-file reads happen yet); the result file is read lazily per-FetchResults-batch
+      // as rs.next() drives subsequent fetch RPCs, which is where the delay must land.
+      DelayingLocalFileSystem.arm(8, 4000);
+      ResultSet rs = stmt.executeQuery(
+          "select id, count(*) from fetchresultsgroupbytimeouttbl group by id");
+
+      List<String> expectedRows = new ArrayList<String>();
+      for (int i = 1; i <= 20; i++) {
+        expectedRows.add(i + ":1");
+      }
+      List<String> actualRows = new ArrayList<String>();
+      try {
+        while (rs.next()) {
+          actualRows.add(rs.getInt(1) + ":" + rs.getLong(2));
+        }
+      } catch (SQLException e) {
+        fail("FetchResults retry after client socketTimeout raised an exception instead of "
+            + "returning the complete result set (expected " + expectedRows + ", got "
+            + actualRows + " before the exception): " + e);
+      } finally {
+        DelayingLocalFileSystem.disarm();
+      }
+      rs.close();
+      stmt.close();
+
+      assertEquals("FetchResults retry after a client-side socketTimeout must not silently "
+          + "drop/duplicate/reorder rows of a GROUP BY/count(*) result set", expectedRows,
+          actualRows);
+    } finally {
+      DelayingLocalFileSystem.disarm();
+      conn.close();
+      // Restore original state
+      restoreMiniHS2AndConnections();
+    }
+  }
+
+  /**
+   * Test-only {@code "file"}-scheme FileSystem that, once armed via {@link #arm}, sleeps for a
+   * configured duration after a configured number of result rows (newline-delimited) have been
+   * read from any opened file. Used to simulate HS2 being slow to stream a materialized query
+   * result file back to the client, independent of any UDF/expression evaluation.
+   */
+  public static class DelayingLocalFileSystem extends LocalFileSystem {
+    private static volatile int delayAfterRow = -1;
+    private static volatile long delayMs = 0;
+    private static final AtomicInteger rowsRead = new AtomicInteger(0);
+    private static final AtomicBoolean triggered = new AtomicBoolean(false);
+
+    static void arm(int delayAfterRow, long delayMs) {
+      DelayingLocalFileSystem.delayAfterRow = delayAfterRow;
+      DelayingLocalFileSystem.delayMs = delayMs;
+      rowsRead.set(0);
+      triggered.set(false);
+    }
+
+    static void disarm() {
+      delayAfterRow = -1;
+    }
+
+    @Override
+    public FSDataInputStream open(Path f, int bufferSize) throws IOException {
+      FSDataInputStream in = super.open(f, bufferSize);
+      // ".hive-staging_" only appears in the FileSinkOperator's final query-result output path
+      // (see Context.getExtTmpPathRelTo/EXT_PREFIX); every other local file this test's query
+      // touches while compiling/running (job.split, map.xml, reduce.xml, stats files, jars) does
+      // not match, so this keeps the delay scoped to the actual result-file read during fetch.
+      if (delayAfterRow < 0 || !f.toString().contains(".hive-staging_")) {
+        return in;
+      }
+      return new FSDataInputStream(new DelayingInputStream(in));
+    }
+
+    private static class DelayingInputStream extends InputStream
+        implements Seekable, PositionedReadable {
+      private final FSDataInputStream in;
+
+      DelayingInputStream(FSDataInputStream in) {
+        this.in = in;
+      }
+
+      @Override
+      public int read() throws IOException {
+        int b = in.read();
+        if (b == '\n' && delayAfterRow >= 0 && rowsRead.incrementAndGet() == delayAfterRow
+            && triggered.compareAndSet(false, true)) {
+          try {
+            Thread.sleep(delayMs);
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+          }
+        }
+        return b;
+      }
+
+      @Override
+      public void seek(long pos) throws IOException {
+        in.seek(pos);
+      }
+
+      @Override
+      public long getPos() throws IOException {
+        return in.getPos();
+      }
+
+      @Override
+      public boolean seekToNewSource(long targetPos) throws IOException {
+        return in.seekToNewSource(targetPos);
+      }
+
+      @Override
+      public int read(long position, byte[] buffer, int offset, int length) throws IOException {
+        return in.read(position, buffer, offset, length);
+      }
+
+      @Override
+      public void readFully(long position, byte[] buffer, int offset, int length)
+          throws IOException {
+        in.readFully(position, buffer, offset, length);
+      }
+
+      @Override
+      public void readFully(long position, byte[] buffer) throws IOException {
+        in.readFully(position, buffer);
+      }
+
+      @Override
+      public void close() throws IOException {
+        in.close();
+      }
+    }
   }
 
   /**
